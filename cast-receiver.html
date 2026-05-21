@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><title>Skirmish</title></head>
+<body style="background:#000">
+<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<script>
+const ctx = cast.framework.CastReceiverContext.getInstance();
+
+ctx.addCustomMessageListener('urn:x-cast:com.skirmish.game', (e) => {
+  window.location.href = 'http://' + e.data.host + '/tv';
+});
+
+ctx.start({ disableIdleTimeout: true });
+</script>
+</body></html>
