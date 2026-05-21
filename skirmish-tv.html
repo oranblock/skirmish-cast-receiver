@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Skirmish TV</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { overflow:hidden; background:#0a0d1a; font-family:'Segoe UI',sans-serif; }
+#canvas { display:block; width:100vw; height:100vh; }
+
+/* ── HUD (left) ── */
+#hud {
+  position:absolute; top:12px; left:12px;
+  background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.07);
+  border-radius:10px; padding:12px 16px; color:#ccc; font-size:12px;
+  backdrop-filter:blur(8px); min-width:200px; user-select:none; z-index:100;
+}
+#hud h3 { color:#fff; font-size:11px; letter-spacing:2px; text-transform:uppercase;
+  margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); }
+.row { display:flex; justify-content:space-between; margin:2px 0; }
+.lbl { color:#666; }
+.val { color:#fff; font-weight:600; }
+#fps.warn { color:#f80; } #fps.crit { color:#f44; }
+
+/* ── Teams (right) ── */
+#teams {
+  position:absolute; top:12px; right:12px;
+  background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.07);
+  border-radius:10px; padding:12px 16px; min-width:150px;
+  backdrop-filter:blur(8px); z-index:100;
+}
+#teams h3 { color:#fff; font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+.team-row { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:12px; color:#ccc; }
+.team-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+/* ── Settings Panel (center modal, toggled by OK / MediaPlayPause) ── */
+#settings-panel {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:rgba(0,0,0,0.88); border:1px solid rgba(255,255,255,0.18);
+  border-radius:16px; padding:20px 28px; display:none; flex-direction:column;
+  gap:11px; backdrop-filter:blur(14px); z-index:200; min-width:270px;
+  box-shadow:0 0 40px rgba(0,0,0,0.6);
+}
+#settings-panel h4 { color:#fff; margin:0 0 4px; font-size:14px; letter-spacing:1px; }
+#settings-panel label {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:16px; color:#ccc; font-size:12px;
+}
+#settings-panel input[type=range] { width:110px; accent-color:#4af; }
+#settings-panel .sep { border:none; border-top:1px solid rgba(255,255,255,0.08); margin:2px 0; }
+#settings-panel button {
+  margin-top:6px; background:#1e3a6a; border:1px solid rgba(100,160,255,0.3);
+  color:#8ad; padding:8px; border-radius:8px; cursor:pointer; font-size:12px;
+  letter-spacing:1px;
+}
+#settings-panel button:hover { background:#2a4f8a; color:#fff; }
+
+/* ── Camera mode indicator ── */
+#cam-mode {
+  position:absolute; bottom:80px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.55); padding:5px 14px; border-radius:20px;
+  font-size:11px; color:#4af; font-family:monospace; pointer-events:none;
+  z-index:100; letter-spacing:1px;
+}
+
+/* ── Minimap ── */
+#minimap {
+  position:absolute; bottom:16px; right:16px;
+  width:160px; height:160px;
+  background:rgba(0,0,0,0.7); border:1px solid rgba(255,255,255,0.1);
+  border-radius:8px; overflow:hidden; z-index:100;
+}
+#minimap canvas { width:100%; height:100%; }
+
+/* ── Control hints ── */
+#camhint {
+  position:absolute; bottom:56px; left:50%; transform:translateX(-50%);
+  color:rgba(255,255,255,0.28); font-size:10px; pointer-events:none;
+  white-space:nowrap; letter-spacing:0.5px; z-index:100;
+}
+
+/* ── Waiting overlay ── */
+#waiting {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:rgba(100,150,255,0.6); font-size:13px; letter-spacing:2px;
+  pointer-events:none; z-index:50;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <h3>⚡ Skirmish</h3>
+  <div class="row"><span class="lbl">FPS</span><span id="fps" class="val">—</span></div>
+  <div class="row"><span class="lbl">Tick</span><span id="tick" class="val">—</span></div>
+  <div class="row"><span class="lbl">Phase</span><span id="phase" class="val">—</span></div>
+  <div class="row"><span class="lbl">Wind</span><span id="wind" class="val">—</span></div>
+  <div class="row"><span class="lbl">Units</span><span id="units" class="val">—</span></div>
+  <div class="row"><span class="lbl">Nodes</span><span id="nodes" class="val">—</span></div>
+  <div class="row"><span class="lbl">Hexes</span><span id="hexcount" class="val">—</span></div>
+  <div class="row"><span class="lbl">Draws</span><span id="drawcalls" class="val">—</span></div>
+  <div class="row"><span class="lbl">Build</span><span id="buildnum" class="val">—</span></div>
+  <div class="row"><span class="lbl">Device</span><span id="devicetype" class="val">—</span></div>
+</div>
+
+<!-- Teams -->
+<div id="teams">
+  <h3>Teams</h3>
+  <div id="teamlist"></div>
+</div>
+
+<!-- Settings Panel -->
+<div id="settings-panel">
+  <h4>🎮 Settings</h4>
+  <hr class="sep">
+  <label>Tilt        <input type="range" id="tilt"         min="20"  max="75"  value="42"></label>
+  <label>Zoom        <input type="range" id="zoom"         min="8"   max="40"  value="18"></label>
+  <label>Hex Height  <input type="range" id="hexheight"    min="0"   max="8"   step="0.5" value="2"></label>
+  <label>Glow        <input type="range" id="glow"         min="0"   max="1"   step="0.05" value="0.35"></label>
+  <hr class="sep">
+  <label>Sensitivity <input type="range" id="cam-sens"     min="0.5" max="2.0" step="0.05" value="1.0"></label>
+  <label>Follow Spd  <input type="range" id="follow-speed" min="2"   max="15"  step="1"    value="8"></label>
+  <label>Auto Orbit  <input type="range" id="auto-orbit"   min="0"   max="0.5" step="0.01" value="0"></label>
+  <button id="close-settings">✖ CLOSE</button>
+</div>
+
+<!-- Camera mode indicator -->
+<div id="cam-mode">🎥 FREE</div>
+
+<!-- Minimap -->
+<div id="minimap"><canvas id="mm"></canvas></div>
+
+<!-- Control hints -->
+<div id="camhint">▲▼◀▶ orbit · OK = settings · R = reset · B = behind base · F = follow unit · ESC = free</div>
+
+<!-- Waiting for server -->
+<div id="waiting">WAITING FOR SERVER...</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ═══════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════
+const HEX_RADIUS = 1.0;
+const HEX_GAP    = 0.04;
+const SQRT3      = Math.sqrt(3);
+
+const TEAM_COLORS = [
+  0x00eeff, 0xff3355, 0xee22ff, 0xffdd00,
+  0x44ff66, 0x4488ff, 0xff8800, 0xff44aa,
+];
+const TEAM_NAMES = ['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Golf','Hotel'];
+
+const TERRAIN_COLOR = {
+  plains:   0x99dd55,
+  forest:   0x66bb44,
+  highland: 0xccaa88,
+  marsh:    0x66ccaa,
+  dunes:    0xeedd88,
+  ruins:    0xcc8866,
+  base:     0x8899dd,
+  water:    0x4488cc,
+  sand:     0xddcc88,
+  ice:      0xaaddff,
+};
+const TERRAIN_HEIGHT = {
+  plains:   0.30, forest:   0.40, highland: 0.60,
+  marsh:    0.20, dunes:    0.25, ruins:    0.35,
+  base:     0.15,
+};
+
+// ═══════════════════════════════════════════════════
+//  RENDERER + SCENE
+// ═══════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: true, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0d1a);
+scene.fog = new THREE.FogExp2(0x0a0d1a, 0.018);
+
+// ── Camera ──────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(0, 14, 20);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping  = true;
+controls.dampingFactor  = 0.08;
+controls.minDistance    = 8;
+controls.maxDistance    = 45;
+controls.maxPolarAngle  = Math.PI / 2.2;
+controls.minPolarAngle  = 0.2;
+controls.panSpeed       = 0.8;
+controls.rotateSpeed    = 0.6;
+controls.target.set(0, 0, 0);
+
+// ── Lighting ────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x223355, 0.8));
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+const sun = new THREE.DirectionalLight(0xffeedd, 2.0);
+sun.position.set(12, 22, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far  = 80;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -30;
+sun.shadow.camera.right = sun.shadow.camera.top = 30;
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
+
+const rim = new THREE.DirectionalLight(0x334488, 0.6);
+rim.position.set(-10, 8, -12);
+scene.add(rim);
+
+// ── Floor ───────────────────────────────────────────
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color: 0x0d1520, roughness: 1.0 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.1;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ═══════════════════════════════════════════════════
+//  HEX MATH
+// ═══════════════════════════════════════════════════
+function hexToWorld(q, r) {
+  return [
+    HEX_RADIUS * SQRT3 * (q + r * 0.5),
+    HEX_RADIUS * 1.5 * r,
+  ];
+}
+
+// ═══════════════════════════════════════════════════
+//  INSTANCED MESH SETUP
+// ═══════════════════════════════════════════════════
+const MAX_HEXES = 600;
+const hexHeight = { current: 2.0 };
+
+// Flat hex disc — CircleGeometry lies in XZ plane
+function makeInstancedHex(mat, count) {
+  return new THREE.InstancedMesh(
+    new THREE.CircleGeometry(HEX_RADIUS * 0.95, 6),
+    mat, count
+  );
+}
+
+const terrainMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+const terrainMesh = makeInstancedHex(terrainMat, MAX_HEXES);
+terrainMesh.castShadow = true;
+terrainMesh.receiveShadow = true;
+scene.add(terrainMesh);
+
+const teamMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, roughness: 0.4, metalness: 0.1,
+  emissive: 0xffffff, emissiveIntensity: 0.0,
+  vertexColors: true, transparent: true, opacity: 0.88,
+});
+const teamMesh = makeInstancedHex(teamMat, MAX_HEXES);
+scene.add(teamMesh);
+
+const nodeMat = new THREE.MeshStandardMaterial({
+  color: 0xffddaa, emissive: 0xff9900, emissiveIntensity: 0.6,
+  roughness: 0.2, metalness: 0.8,
+});
+const nodeMesh = new THREE.InstancedMesh(
+  new THREE.CylinderGeometry(0.18, 0.22, 0.6, 6),
+  nodeMat, 32
+);
+nodeMesh.castShadow = true;
+scene.add(nodeMesh);
+
+// ═══════════════════════════════════════════════════
+//  REBUILD HEX GRID
+// ═══════════════════════════════════════════════════
+const dummy = new THREE.Object3D();
+const _color = new THREE.Color();
+
+function rebuildHexGrid(hexes, hHeight) {
+  const hexList = Object.values(hexes);
+  let tIdx = 0, teamIdx = 0, nodeIdx = 0;
+
+  for (const hex of hexList) {
+    const [wx, wz] = hexToWorld(hex.q, hex.r);
+    const elevOffset = (hex.elevation ?? 0) * 0.22;
+    const terrainH = TERRAIN_HEIGHT[hex.terrain] || 0.12;
+
+    // Terrain tile
+    const terrainCol = TERRAIN_COLOR[hex.terrain] || 0x556644;
+    _color.setHex(terrainCol);
+    terrainMesh.setColorAt(tIdx, _color);
+    dummy.position.set(wx, elevOffset, wz);
+    dummy.scale.set(1, 1, 1);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    terrainMesh.setMatrixAt(tIdx, dummy.matrix);
+    tIdx++;
+
+    // Team overlay (owned hexes only)
+    if (hex.owner !== null && hex.owner !== undefined) {
+      dummy.position.set(wx, elevOffset + terrainH + hHeight * 0.08, wz);
+      dummy.scale.set(0.92, 1, 0.92);
+      dummy.updateMatrix();
+      teamMesh.setMatrixAt(teamIdx, dummy.matrix);
+      _color.setHex(TEAM_COLORS[hex.owner % TEAM_COLORS.length]);
+      teamMesh.setColorAt(teamIdx, _color);
+      teamIdx++;
+    }
+
+    // Node marker
+    if (hex.is_node) {
+      dummy.position.set(wx, elevOffset + terrainH + hHeight * 0.1 + 0.3, wz);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      nodeMesh.setMatrixAt(nodeIdx, dummy.matrix);
+      nodeIdx++;
+    }
+  }
+
+  // Hide unused slots
+  for (let i = tIdx; i < MAX_HEXES; i++) {
+    dummy.position.set(9999, 9999, 9999);
+    dummy.scale.set(0.001, 0.001, 0.001);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    terrainMesh.setMatrixAt(i, dummy.matrix);
+  }
+  for (let i = teamIdx; i < MAX_HEXES; i++) {
+    dummy.position.set(9999, 9999, 9999);
+    dummy.updateMatrix();
+    teamMesh.setMatrixAt(i, dummy.matrix);
+  }
+  for (let i = nodeIdx; i < 32; i++) {
+    dummy.position.set(9999, 9999, 9999);
+    dummy.updateMatrix();
+    nodeMesh.setMatrixAt(i, dummy.matrix);
+  }
+
+  terrainMesh.instanceMatrix.needsUpdate = true;
+  terrainMesh.instanceColor.needsUpdate = true;
+  teamMesh.instanceMatrix.needsUpdate = true;
+  teamMesh.instanceColor.needsUpdate = true;
+  nodeMesh.instanceMatrix.needsUpdate = true;
+  nodeMesh.count = nodeIdx;
+
+  document.getElementById('hexcount').textContent = tIdx;
+}
+
+// ═══════════════════════════════════════════════════
+//  TEAM LIGHTS (point light per team base zone)
+// ═══════════════════════════════════════════════════
+const teamLights = [];
+function buildTeamLights(hexes) {
+  teamLights.forEach(l => scene.remove(l));
+  teamLights.length = 0;
+  const centroids = {}, counts = {};
+  for (const hex of Object.values(hexes)) {
+    if (hex.owner === null || hex.owner === undefined) continue;
+    const [wx, wz] = hexToWorld(hex.q, hex.r);
+    if (!centroids[hex.owner]) centroids[hex.owner] = { x:0, z:0 };
+    centroids[hex.owner].x += wx;
+    centroids[hex.owner].z += wz;
+    counts[hex.owner] = (counts[hex.owner] || 0) + 1;
+  }
+  for (const [owner, c] of Object.entries(centroids)) {
+    const n = counts[owner];
+    const light = new THREE.PointLight(TEAM_COLORS[owner % TEAM_COLORS.length], 0.8, 12, 2);
+    light.position.set(c.x / n, 3.5, c.z / n);
+    scene.add(light);
+    teamLights.push(light);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  UNIT + PROJECTILE SYSTEM
+// ═══════════════════════════════════════════════════
+const unitMeshes    = new Map();
+const projMeshes    = new Map();
+const unitRenderPos = new Map();
+const unitRenderAngle = new Map();
+const unitHealthBars  = new Map();
+const projRenderPos   = new Map();
+const seen = new Set();  // reused per syncUnits call
+
+const matUnit = {
+  infantry: new THREE.MeshStandardMaterial({ color:0x44bb44, roughness:0.7 }),
+  tank:     new THREE.MeshStandardMaterial({ color:0x888888, metalness:0.6, roughness:0.4 }),
+  air:      new THREE.MeshStandardMaterial({ color:0x4488ff, metalness:0.5, roughness:0.3 }),
+  missile:  new THREE.MeshStandardMaterial({ color:0xcccccc, emissive:0xff2200, emissiveIntensity:0.4, metalness:0.9 }),
+};
+const geoUnit = {
+  infantry: new THREE.SphereGeometry(0.35, 8, 6),
+  tank:     new THREE.BoxGeometry(0.8, 0.5, 1.2),
+  air:      new THREE.ConeGeometry(0.4, 1.0, 8),
+  missile:  new THREE.CylinderGeometry(0.1, 0.1, 0.6, 8),
+};
+const geoProj = new THREE.SphereGeometry(0.12, 6, 4);
+const matProj = new THREE.MeshStandardMaterial({ color:0xff6600, emissive:0xff3300, emissiveIntensity:0.8 });
+
+let _syncCount = 0;
+
+function syncUnits(state) {
+  _syncCount++;
+  const lerp = window.__animDt ? 1.0 - Math.pow(0.05, window.__animDt / 0.1) : 0.5;
+  seen.clear();
+
+  for (const u of (state.units || [])) {
+    seen.add(u.id);
+
+    // Create mesh if new
+    if (!unitMeshes.has(u.id)) {
+      const m = new THREE.Mesh(geoUnit[u.type] || geoUnit.infantry, matUnit[u.type] || matUnit.infantry);
+      m.castShadow = true;
+      scene.add(m);
+      unitMeshes.set(u.id, m);
+      unitRenderPos.set(u.id, { x: u.x, y: u.y, z: u.z });
+      unitRenderAngle.set(u.id, 0);
+
+      // Gun barrel
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6),
+        new THREE.MeshStandardMaterial({ color:0x111111, metalness:0.8, roughness:0.3 })
+      );
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.1, 0.4);
+      m.add(barrel);
+
+      // Neon team-color outline
+      const neonColor = u.team === 'blue' ? 0x00aaff : 0xff4400;
+      const neonLines = new THREE.LineSegments(
+        new THREE.EdgesGeometry(m.geometry),
+        new THREE.LineBasicMaterial({ color: neonColor, linewidth: 2 })
+      );
+      neonLines.scale.set(1.15, 1.15, 1.15);
+      m.add(neonLines);
+    }
+
+    const m = unitMeshes.get(u.id);
+    if (u.destroyed) {
+      m.visible = false;
+      const hb = unitHealthBars.get(u.id);
+      if (hb) hb.visible = false;
+      continue;
+    }
+
+    // Lerp position
+    const rp = unitRenderPos.get(u.id) ?? { x: u.x, y: u.y, z: u.z };
+    const nx = rp.x + (u.x - rp.x) * lerp;
+    const ny = rp.y + (u.y - rp.y) * lerp;
+    const nz = rp.z + (u.z - rp.z) * lerp;
+    unitRenderPos.set(u.id, { x: nx, y: ny, z: nz });
+
+    // Health bar
+    let hpBar = unitHealthBars.get(u.id);
+    if (!hpBar) {
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 8;
+      const tex = new THREE.CanvasTexture(c);
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+      hpBar = new THREE.Sprite(mat);
+      hpBar.scale.set(1.2, 0.15, 1);
+      scene.add(hpBar);
+      unitHealthBars.set(u.id, hpBar);
+    }
+    const hp = u.hp || 0, maxHp = u.maxHp || 100;
+    const hpRatio = hp / maxHp;
+    hpBar.visible = hpRatio < 1.0;
+    if (hpRatio < 1.0) {
+      hpBar.position.set(nx, Math.max(ny, 0.3) + 1.0, nz);
+      const hc = hpBar.material.map.image;
+      const ctx = hc.getContext('2d');
+      if (ctx && (!hpBar._lastSync || _syncCount - hpBar._lastSync >= 4)) {
+        ctx.clearRect(0, 0, 64, 8);
+        ctx.fillStyle = '#222';
+        ctx.fillRect(0, 0, 64, 8);
+        ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : hpRatio > 0.25 ? '#ffaa22' : '#ff2222';
+        ctx.fillRect(0, 0, 64 * hpRatio, 8);
+        hpBar.material.map.needsUpdate = true;
+        hpBar._lastSync = _syncCount;
+      }
+    }
+
+    // Smooth facing
+    let targetAngle = 0;
+    if (u.vx != null && u.vz != null) targetAngle = Math.atan2(u.vx, u.vz);
+    const prevAngle = unitRenderAngle.get(u.id) ?? targetAngle;
+    let diff = targetAngle - prevAngle;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    unitRenderAngle.set(u.id, prevAngle + diff * lerp);
+
+    const speed = Math.sqrt((u.vx ?? 0) ** 2 + (u.vz ?? 0) ** 2);
+    const bob = Math.sin(performance.now() * 0.01 + u.id.charCodeAt(0)) * 0.05 * Math.min(speed, 3);
+
+    m.visible = true;
+    m.position.set(nx, Math.max(ny, 0.3) + bob, nz);
+    m.rotation.y = unitRenderAngle.get(u.id) ?? 0;
+  }
+
+  // Remove gone units
+  for (const [id, m] of unitMeshes) {
+    if (!seen.has(id)) {
+      scene.remove(m);
+      m.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(mat => mat.dispose());
+          else child.material.dispose();
+        }
+      });
+      unitMeshes.delete(id);
+      unitRenderPos.delete(id);
+      unitRenderAngle.delete(id);
+      const hb = unitHealthBars.get(id);
+      if (hb) {
+        scene.remove(hb);
+        if (hb.material.map) hb.material.map.dispose();
+        hb.material.dispose();
+        unitHealthBars.delete(id);
+      }
+    }
+  }
+
+  // Projectiles
+  const seenP = new Set();
+  for (const p of (state.projectiles || [])) {
+    seenP.add(p.id);
+    if (!projMeshes.has(p.id)) {
+      const m = new THREE.Mesh(geoProj, matProj);
+      scene.add(m);
+      projMeshes.set(p.id, m);
+      projRenderPos.set(p.id, { x: p.x, y: p.y, z: p.z });
+    }
+    const pp = projRenderPos.get(p.id) ?? { x: p.x, y: p.y, z: p.z };
+    const pnx = pp.x + (p.x - pp.x) * lerp;
+    const pny = pp.y + (p.y - pp.y) * lerp;
+    const pnz = pp.z + (p.z - pp.z) * lerp;
+    projRenderPos.set(p.id, { x: pnx, y: pny, z: pnz });
+    projMeshes.get(p.id).position.set(pnx, pny, pnz);
+  }
+  for (const [id, m] of projMeshes) {
+    if (!seenP.has(id)) {
+      scene.remove(m);
+      if (m.geometry) m.geometry.dispose();
+      projMeshes.delete(id);
+      projRenderPos.delete(id);
+    }
+  }
+
+  document.getElementById('units').textContent = unitMeshes.size;
+}
+
+// ═══════════════════════════════════════════════════
+//  VFX POOLS (shoot lines, explode spheres, death splatters)
+// ═══════════════════════════════════════════════════
+const SHOOT_POOL  = 20;
+const EXPLODE_POOL = 10;
+const SPLAT_POOL   = 12;
+const shootLines = [], explodeSpheres = [], splatPool = [], deathSplatters = [];
+
+for (let i = 0; i < SHOOT_POOL; i++) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0 });
+  const line = new THREE.Line(geo, mat);
+  line.visible = false;
+  scene.add(line);
+  shootLines.push({ line, geo, mat, active: false, born: 0 });
+}
+
+for (let i = 0; i < EXPLODE_POOL; i++) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0 });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 4), mat);
+  mesh.visible = false;
+  scene.add(mesh);
+  explodeSpheres.push({ mesh, mat, active: false, born: 0 });
+}
+
+for (let i = 0; i < SPLAT_POOL; i++) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xaa2222, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.8, 8), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.visible = false;
+  scene.add(mesh);
+  splatPool.push({ mesh, mat, active: false, born: 0, duration: 3000 });
+}
+
+function handleVFX(msg) {
+  const pos = msg.pos;
+  if (!pos) return;
+
+  if (msg.type === 'DEATH_SPLAT') {
+    const slot = splatPool.find(s => !s.active);
+    if (!slot) return;
+    slot.mat.color.setHex(msg.color || 0xaa2222);
+    slot.mat.opacity = 0.85;
+    slot.mesh.rotation.z = Math.random() * Math.PI * 2;
+    const sc = 0.8 + Math.random() * 0.6;
+    slot.mesh.scale.set(sc, sc, 1);
+    slot.mesh.position.set(pos.x, 0.05, pos.z);
+    slot.mesh.visible = true;
+    slot.active = true;
+    slot.born = performance.now();
+    slot.duration = (msg.duration || 3) * 1000;
+    deathSplatters.push(slot);
+  }
+
+  if (msg.type === 'EXPLODE') {
+    const slot = explodeSpheres.find(s => !s.active);
+    if (!slot) return;
+    slot.mat.color.setHex(msg.color || 0xff4400);
+    slot.mat.opacity = 0.9;
+    slot.mesh.scale.setScalar(1);
+    slot.mesh.position.set(pos.x, pos.y, pos.z);
+    slot.mesh.visible = true;
+    slot.active = true;
+    slot.born = performance.now();
+  }
+
+  if (msg.type === 'SHOOT' || msg.type === 'BULLET_HIT') {
+    const from = msg.from || msg.pos;
+    const to   = msg.to   || msg.hitPos;
+    if (!from || !to) return;
+    const slot = shootLines.find(s => !s.active);
+    if (!slot) return;
+    const pa = slot.geo.attributes.position.array;
+    pa[0] = from.x; pa[1] = from.y; pa[2] = from.z;
+    pa[3] = to.x;   pa[4] = to.y;   pa[5] = to.z;
+    slot.geo.attributes.position.needsUpdate = true;
+    slot.mat.color.setHex(msg.type === 'BULLET_HIT' ? 0xff2222 : 0xffff00);
+    slot.mat.opacity = 0.85;
+    slot.line.visible = true;
+    slot.active = true;
+    slot.born = msg.type === 'BULLET_HIT' ? performance.now() - 50 : performance.now();
+  }
+}
+
+function updateVFX() {
+  const now = performance.now();
+  for (const s of shootLines) {
+    if (!s.active) continue;
+    const age = now - s.born;
+    if (age >= 200) { s.active = false; s.line.visible = false; continue; }
+    s.mat.opacity = Math.max(0, 0.85 - age / 200);
+  }
+  for (const s of explodeSpheres) {
+    if (!s.active) continue;
+    const age = now - s.born;
+    if (age >= 400) { s.active = false; s.mesh.visible = false; continue; }
+    s.mat.opacity = Math.max(0, 0.9 - age / 400);
+    s.mesh.scale.setScalar(1 + age / 200);
+  }
+}
+
+function updateSplatters(now) {
+  for (let i = deathSplatters.length - 1; i >= 0; i--) {
+    const s = deathSplatters[i];
+    const age = now - s.born;
+    if (age >= s.duration) {
+      s.mesh.visible = false; s.active = false;
+      deathSplatters.splice(i, 1);
+    } else if (age > s.duration * 0.7) {
+      s.mat.opacity = 0.85 * (1 - (age - s.duration * 0.7) / (s.duration * 0.3));
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  MINIMAP
+// ═══════════════════════════════════════════════════
+const mm = document.getElementById('mm');
+const mmCtx = mm.getContext('2d');
+mm.width = mm.height = 200;
+
+function drawMinimap(hexes) {
+  mmCtx.clearRect(0, 0, 200, 200);
+  mmCtx.fillStyle = '#0a0d1a';
+  mmCtx.fillRect(0, 0, 200, 200);
+  const scale = 8.5, cx = 100, cy = 100;
+  for (const hex of Object.values(hexes)) {
+    const [wx, wz] = hexToWorld(hex.q, hex.r);
+    const sx = cx + wx * scale;
+    const sy = cy + wz * scale;
+    const r = scale * HEX_RADIUS * 0.52;
+    mmCtx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      i === 0 ? mmCtx.moveTo(sx + r * Math.cos(a), sy + r * Math.sin(a))
+              : mmCtx.lineTo(sx + r * Math.cos(a), sy + r * Math.sin(a));
+    }
+    mmCtx.closePath();
+    if (hex.owner !== null && hex.owner !== undefined) {
+      const c = TEAM_COLORS[hex.owner % TEAM_COLORS.length];
+      const hex6 = '#' + c.toString(16).padStart(6,'0');
+      mmCtx.fillStyle = hex6 + '99';
+      mmCtx.fill();
+      mmCtx.strokeStyle = hex6;
+      mmCtx.lineWidth = 0.5;
+      mmCtx.stroke();
+    } else {
+      mmCtx.fillStyle = hex.is_node ? '#ffaa2288' : '#1a2a1a88';
+      mmCtx.fill();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  TEAM LIST UI
+// ═══════════════════════════════════════════════════
+function buildTeamList(n) {
+  const el = document.getElementById('teamlist');
+  el.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const c = '#' + TEAM_COLORS[i].toString(16).padStart(6,'0');
+    el.innerHTML += `<div class="team-row">
+      <div class="team-dot" style="background:${c};box-shadow:0 0 6px ${c}"></div>
+      <span>${TEAM_NAMES[i]}</span>
+      <span style="margin-left:auto;color:#555">—</span>
+    </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  CAMERA MODE SYSTEM
+// ═══════════════════════════════════════════════════
+let cameraMode = 'free';    // 'free' | 'follow' | 'behind-base'
+let followTarget = null;     // THREE.Mesh of unit to follow
+let followIndex  = 0;
+let autoOrbitSpeed = 0;
+let camSensitivity = 1.0;
+let followSpeed    = 8;
+let mapData = null;          // updated by WS
+
+function setCameraMode(mode) {
+  cameraMode = mode;
+  document.getElementById('cam-mode').textContent = '🎥 ' + mode.toUpperCase().replace('-',' ');
+  if (mode === 'behind-base') {
+    const base = findBaseCenter();
+    if (base) {
+      const angle = Math.atan2(base.z, base.x) + Math.PI;
+      const dist = 18;
+      camera.position.set(base.x + Math.cos(angle) * dist, 10, base.z + Math.sin(angle) * dist);
+      controls.target.set(base.x, 1.5, base.z);
+      controls.update();
+    }
+  }
+}
+
+function findBaseCenter(ownerIdx = 0) {
+  if (!mapData) return null;
+  let sx = 0, sz = 0, n = 0;
+  for (const hex of Object.values(mapData)) {
+    if (hex.owner === ownerIdx) {
+      const [wx, wz] = hexToWorld(hex.q, hex.r);
+      sx += wx; sz += wz; n++;
+    }
+  }
+  return n ? { x: sx / n, z: sz / n } : null;
+}
+
+function pickFollowTarget() {
+  const alive = [...unitMeshes.values()].filter(m => m.visible);
+  if (!alive.length) return;
+  followTarget = alive[followIndex % alive.length];
+  followIndex++;
+  setCameraMode('follow');
+}
+
+function updateCameraFollow(dt) {
+  if (cameraMode === 'follow' && followTarget && followTarget.parent) {
+    const tp = followTarget.position;
+    const desired = tp.clone().add(new THREE.Vector3(-5, 6, -7));
+    camera.position.lerp(desired, followSpeed * dt);
+    controls.target.lerp(tp, followSpeed * dt);
+    controls.update();
+  } else if (cameraMode === 'behind-base') {
+    const base = findBaseCenter();
+    if (base) {
+      const angle = Math.atan2(base.z, base.x) + Math.PI;
+      const dist = 18;
+      camera.position.x += (base.x + Math.cos(angle) * dist - camera.position.x) * 0.06;
+      camera.position.y += (10 - camera.position.y) * 0.04;
+      camera.position.z += (base.z + Math.sin(angle) * dist - camera.position.z) * 0.06;
+      controls.target.x += (base.x - controls.target.x) * 0.05;
+      controls.target.z += (base.z - controls.target.z) * 0.05;
+      controls.update();
+    }
+  }
+
+  // Auto-orbit (free mode only)
+  if (autoOrbitSpeed > 0 && cameraMode === 'free') {
+    const dx = camera.position.x - controls.target.x;
+    const dz = camera.position.z - controls.target.z;
+    const angle = Math.atan2(dz, dx) + autoOrbitSpeed * dt;
+    const dist  = Math.sqrt(dx * dx + dz * dz);
+    camera.position.x = controls.target.x + Math.cos(angle) * dist;
+    camera.position.z = controls.target.z + Math.sin(angle) * dist;
+    controls.update();
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  WEBSOCKET
+// ═══════════════════════════════════════════════════
+let serverTick = 0;
+const waitingEl = document.getElementById('waiting');
+
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/game`);
+
+    ws.onopen = () => { if (waitingEl) waitingEl.style.display = 'none'; };
+
+    ws.onmessage = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      PerfMon.message(msg.type);
+
+      if (msg.type === 'map_state' && msg.hexes) {
+        mapData = msg.hexes;
+        PerfMon.timeRebuild(() => rebuildHexGrid(mapData, hexHeight.current));
+        drawMinimap(mapData);
+        buildTeamLights(mapData);
+        if (waitingEl) waitingEl.style.display = 'none';
+      }
+
+      if (msg.type === 'game_state') {
+        if (msg.phase) document.getElementById('phase').textContent = msg.phase;
+        if (msg.tick  != null) {
+          serverTick = msg.tick;
+          document.getElementById('tick').textContent = (serverTick / 20).toFixed(1) + 's';
+        }
+        if (msg.nodes != null) document.getElementById('nodes').textContent = msg.nodes;
+      }
+
+      if (msg.type === 'physics_state') {
+        const d = msg.data || msg;
+        if (d.tick != null) {
+          serverTick = d.tick;
+          document.getElementById('tick').textContent = (serverTick / 20).toFixed(1) + 's';
+        }
+        const wx = d.wind?.x || 0, wz = d.wind?.z || 0;
+        document.getElementById('wind').textContent = `${wx.toFixed(1)}, ${wz.toFixed(1)}`;
+        syncUnits(d);
+      }
+
+      if (msg.type === 'vfx') handleVFX(msg);
+    };
+
+    ws.onclose = () => {
+      if (waitingEl) waitingEl.style.display = '';
+      setTimeout(connectWS, 2000);
+    };
+  } catch (e) {
+    setTimeout(connectWS, 3000);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  SLIDER LISTENERS
+// ═══════════════════════════════════════════════════
+document.getElementById('tilt').addEventListener('input', (e) => {
+  const angle = THREE.MathUtils.degToRad(parseFloat(e.target.value));
+  const dist  = camera.position.distanceTo(controls.target);
+  camera.position.set(
+    controls.target.x,
+    controls.target.y + dist * Math.sin(angle),
+    controls.target.z + dist * Math.cos(angle)
+  );
+  controls.update();
+});
+
+document.getElementById('zoom').addEventListener('input', (e) => {
+  const v   = parseFloat(e.target.value);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, v);
+  controls.update();
+});
+
+document.getElementById('hexheight').addEventListener('input', (e) => {
+  hexHeight.current = parseFloat(e.target.value);
+  if (mapData) rebuildHexGrid(mapData, hexHeight.current);
+});
+
+document.getElementById('glow').addEventListener('input', (e) => {
+  teamLights.forEach(l => l.intensity = parseFloat(e.target.value) * 2.4);
+});
+
+document.getElementById('cam-sens').addEventListener('input',     (e) => { camSensitivity = parseFloat(e.target.value); });
+document.getElementById('follow-speed').addEventListener('input', (e) => { followSpeed    = parseFloat(e.target.value); });
+document.getElementById('auto-orbit').addEventListener('input',   (e) => { autoOrbitSpeed = parseFloat(e.target.value); });
+document.getElementById('close-settings').addEventListener('click', () => {
+  document.getElementById('settings-panel').style.display = 'none';
+});
+
+// ═══════════════════════════════════════════════════
+//  KEYBOARD + SHIELD REMOTE HANDLING
+// ═══════════════════════════════════════════════════
+const cameraKeys = Object.create(null);
+
+window.addEventListener('keydown', (e) => {
+  cameraKeys[e.code] = true;
+
+  // SHIELD / TV remote media buttons
+  if (e.code === 'MediaRewind')      { cameraKeys['cam_zoomout'] = true;  e.preventDefault(); return; }
+  if (e.code === 'MediaFastForward') { cameraKeys['cam_zoomin']  = true;  e.preventDefault(); return; }
+
+  // OK / Play-Pause = toggle settings panel
+  if (e.code === 'MediaPlayPause' || e.code === 'Enter' || e.code === 'GamepadA') {
+    const panel = document.getElementById('settings-panel');
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    e.preventDefault();
+    return;
+  }
+
+  // Mode shortcuts
+  if (e.code === 'KeyR') {
+    camera.position.set(0, 14, 20);
+    controls.target.set(0, 0, 0);
+    controls.update();
+    setCameraMode('free');
+    e.preventDefault(); return;
+  }
+  if (e.code === 'KeyB') { setCameraMode('behind-base'); e.preventDefault(); return; }
+  if (e.code === 'KeyF') { pickFollowTarget();           e.preventDefault(); return; }
+  if (e.code === 'Escape') { setCameraMode('free');      e.preventDefault(); return; }
+});
+
+window.addEventListener('keyup', (e) => {
+  cameraKeys[e.code] = false;
+  if (e.code === 'MediaRewind')      cameraKeys['cam_zoomout'] = false;
+  if (e.code === 'MediaFastForward') cameraKeys['cam_zoomin']  = false;
+});
+
+function applyCameraInput() {
+  if (cameraMode !== 'free') return;
+
+  const ROT   = 0.03 * camSensitivity;
+  const ELEV  = 0.25 * camSensitivity;
+  const ZOOM  = 0.5;
+  const MIN_D = 8, MAX_D = 45;
+
+  const dx = camera.position.x - controls.target.x;
+  const dy = camera.position.y - controls.target.y;
+  const dz = camera.position.z - controls.target.z;
+  const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+  if (cameraKeys['ArrowLeft']) {
+    const a = Math.atan2(dz, dx) + ROT;
+    camera.position.x = controls.target.x + dist * Math.cos(a);
+    camera.position.z = controls.target.z + dist * Math.sin(a);
+  }
+  if (cameraKeys['ArrowRight']) {
+    const a = Math.atan2(dz, dx) - ROT;
+    camera.position.x = controls.target.x + dist * Math.cos(a);
+    camera.position.z = controls.target.z + dist * Math.sin(a);
+  }
+  if (cameraKeys['ArrowUp']) {
+    camera.position.y = Math.min(28, camera.position.y + ELEV);
+  }
+  if (cameraKeys['ArrowDown']) {
+    camera.position.y = Math.max(4, camera.position.y - ELEV);
+  }
+
+  // Zoom (numpad +/- or SHIELD media buttons)
+  if (cameraKeys['NumpadAdd'] || cameraKeys['Equal'] || cameraKeys['cam_zoomin']) {
+    const nd = Math.max(MIN_D, dist - ZOOM);
+    const ratio = nd / dist;
+    camera.position.x = controls.target.x + dx * ratio;
+    camera.position.y = controls.target.y + dy * ratio;
+    camera.position.z = controls.target.z + dz * ratio;
+  }
+  if (cameraKeys['NumpadSubtract'] || cameraKeys['Minus'] || cameraKeys['cam_zoomout']) {
+    const nd = Math.min(MAX_D, dist + ZOOM);
+    const ratio = nd / dist;
+    camera.position.x = controls.target.x + dx * ratio;
+    camera.position.y = controls.target.y + dy * ratio;
+    camera.position.z = controls.target.z + dz * ratio;
+  }
+
+  // Pan
+  if (cameraKeys['Numpad8'] || cameraKeys['KeyQ']) controls.target.z -= 0.08;
+  if (cameraKeys['Numpad2'] || cameraKeys['KeyE']) controls.target.z += 0.08;
+  if (cameraKeys['Numpad4'] || cameraKeys['KeyZ']) controls.target.x -= 0.08;
+  if (cameraKeys['Numpad6'] || cameraKeys['KeyX']) controls.target.x += 0.08;
+
+  controls.update();
+}
+
+// ═══════════════════════════════════════════════════
+//  TOUCH — Pinch to Zoom
+// ═══════════════════════════════════════════════════
+let lastPinchDist = 0;
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastPinchDist = Math.sqrt(dx*dx + dy*dy);
+  }
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const newDist = Math.sqrt(dx*dx + dy*dy);
+    if (lastPinchDist > 0) {
+      const delta = (newDist - lastPinchDist) * 0.05;
+      const dir = camera.position.clone().sub(controls.target).normalize();
+      const curDist = camera.position.distanceTo(controls.target);
+      const nd = Math.max(8, Math.min(45, curDist - delta));
+      camera.position.copy(controls.target).addScaledVector(dir, nd);
+      controls.update();
+    }
+    lastPinchDist = newDist;
+  }
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (e.touches.length < 2) lastPinchDist = 0;
+}, { passive: true });
+
+// ═══════════════════════════════════════════════════
+//  PERF MONITOR
+// ═══════════════════════════════════════════════════
+const PerfMon = (() => {
+  const REPORT_EVERY = 60;
+  const STUTTER_MS = 33, LAG_MS = 100;
+  let lastFrame = performance.now(), lastMsg = performance.now();
+  let tick = 0, totalDelta = 0, stutterCount = 0, syncLagCount = 0;
+  let rebuildMs = 0, rebuildFail = false;
+
+  return {
+    frame(renderer) {
+      const now = performance.now();
+      const delta = now - lastFrame;
+      lastFrame = now;
+      totalDelta += delta;
+      tick++;
+      if (delta > STUTTER_MS) stutterCount++;
+      if (tick >= REPORT_EVERY) {
+        const avg = (totalDelta / tick).toFixed(2);
+        console.log(
+          `[SKIRMISH] MONITOR ticks=${tick} smooth=${REPORT_EVERY-stutterCount}/${tick}` +
+          ` avg=${avg}ms rebuild=${rebuildFail?'FAIL('+rebuildMs.toFixed(1)+'ms)':'ok'}` +
+          ` syncLag=${syncLagCount} units=${unitMeshes.size} geo=${renderer.info.memory.geometries}`
+        );
+        tick = stutterCount = syncLagCount = totalDelta = 0;
+        rebuildFail = false;
+      }
+    },
+    message() {
+      const now = performance.now();
+      if (now - lastMsg > LAG_MS) syncLagCount++;
+      lastMsg = now;
+    },
+    timeRebuild(fn) {
+      const t0 = performance.now();
+      fn();
+      rebuildMs = performance.now() - t0;
+      rebuildFail = rebuildMs > 10;
+    },
+  };
+})();
+
+// ═══════════════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════════════
+let lastT = 0, frames = 0, fpsT = 0;
+
+function animate(t) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.033, (t - lastT) / 1000);
+  lastT = t;
+  window.__animDt = dt;
+
+  controls.update();
+  applyCameraInput();
+  updateCameraFollow(dt);
+  updateVFX();
+  updateSplatters(performance.now());
+
+  // Node pulse
+  nodeMat.emissiveIntensity = 0.4 + 0.4 * (0.5 + 0.5 * Math.sin(t * 0.003));
+
+  renderer.render(scene, camera);
+
+  // FPS
+  frames++;
+  if (t - fpsT > 1000) {
+    const fps = Math.round(frames / ((t - fpsT) / 1000));
+    const el = document.getElementById('fps');
+    el.textContent = fps;
+    el.className = 'val' + (fps < 15 ? ' crit' : fps < 30 ? ' warn' : '');
+    document.getElementById('drawcalls').textContent = renderer.info.render.calls;
+    renderer.info.reset();
+    frames = 0; fpsT = t;
+  }
+
+  try { PerfMon.frame(renderer); } catch(e) {}
+}
+
+animate(0);
+
+// ═══════════════════════════════════════════════════
+//  RESIZE
+// ═══════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ═══════════════════════════════════════════════════
+//  ANDROID BRIDGE INIT
+// ═══════════════════════════════════════════════════
+try {
+  if (typeof Android !== 'undefined' && Android.log) {
+    Android.log('[SKIRMISH] skirmish-tv.html loaded');
+    const build = Android.getBuildNumber ? Android.getBuildNumber() : '?';
+    const isTv  = Android.isTvLandscape  ? Android.isTvLandscape()  : false;
+    Android.log('[SKIRMISH] build=' + build + ' isTv=' + isTv);
+    const buildEl  = document.getElementById('buildnum');
+    const deviceEl = document.getElementById('devicetype');
+    if (buildEl)  buildEl.textContent  = build;
+    if (deviceEl) deviceEl.textContent = isTv ? 'TV' : 'Mobile';
+  }
+} catch (e) {
+  console.log('[SKIRMISH] Android bridge error: ' + e.message);
+}
+
+// ── START ────────────────────────────────────────────
+connectWS();
+
+</script>
+</body>
+</html>
