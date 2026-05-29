@@ -1,15 +1,28 @@
 <!DOCTYPE html>
-<html><head><title>Skirmish</title></head>
-<body style="background:#000">
-<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-<script>
-const context = cast.framework.CastReceiverContext.getInstance();
+<html>
+<head>
+    <title>Skirmish</title>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+</head>
+<body style="background:#000; color:#0f8; font-family:monospace; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;">
+    <div id="status">WAITING FOR HANDSHAKE...</div>
 
-// This namespace MUST match your Kotlin CAST_CHANNEL exactly
-context.addCustomMessageListener('urn:x-cast:com.da3dee3.skirmish', (event) => {
-    // Handle the incoming {"host":"..."} payload here [1.1.4]
-});
+    <script>
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const namespace = 'urn:x-cast:com.da3dee3.skirmish';
 
-context.start({ disableIdleTimeout: true });
-</script>
-</body></html>
+        context.addCustomMessageListener(namespace, (event) => {
+            console.log('Handshake received:', event.data);
+            const data = event.data;
+
+            if (data.host) {
+                document.getElementById('status').innerText = "CONNECTING TO " + data.host + "...";
+                // 🚀 REDIRECT: This is the missing piece
+                window.location.href = "http://" + data.host + "/tv";
+            }
+        });
+
+        context.start({ disableIdleTimeout: true });
+    </script>
+</body>
+</html>
