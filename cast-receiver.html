@@ -3,12 +3,13 @@
 <body style="background:#000">
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <script>
-const ctx = cast.framework.CastReceiverContext.getInstance();
+const context = cast.framework.CastReceiverContext.getInstance();
 
-ctx.addCustomMessageListener('urn:x-cast:com.skirmish.game', (e) => {
-  window.location.href = 'http://' + e.data.host + '/tv';
+// This namespace MUST match your Kotlin CAST_CHANNEL exactly
+context.addCustomMessageListener('urn:x-cast:com.da3dee3.skirmish', (event) => {
+    // Handle the incoming {"host":"..."} payload here [1.1.4]
 });
 
-ctx.start({ disableIdleTimeout: true });
+context.start({ disableIdleTimeout: true });
 </script>
 </body></html>
