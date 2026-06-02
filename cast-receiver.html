@@ -1,28 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Skirmish</title>
+    <title>Skirmish TV Receiver</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <style>
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+        #status {
+            position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+            color:#0f8; font-family:monospace; font-size:24px; text-align:center; z-index:10;
+        }
+        iframe {
+            position:absolute; top:0; left:0; width:100%; height:100%;
+            border:none; display:none; z-index:20;
+        }
+        .error { color: #f44; }
+    </style>
 </head>
-<body style="background:#000; color:#0f8; font-family:monospace; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;">
+<body>
     <div id="status">WAITING FOR HANDSHAKE...</div>
+    <!-- The sandbox attribute is critical for allowing local network communication -->
+    <iframe id="game-frame" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
 
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const namespace = 'urn:x-cast:com.da3dee3.skirmish';
+        const statusEl = document.getElementById('status');
+        const frameEl = document.getElementById('game-frame');
 
         context.addCustomMessageListener(namespace, (event) => {
-            console.log('Handshake received:', event.data);
             const data = event.data;
-
             if (data.host) {
-                document.getElementById('status').innerText = "CONNECTING TO " + data.host + "...";
-                // 🚀 REDIRECT: This is the missing piece
-                window.location.href = "http://" + data.host + "/tv";
+                // Construct the local URL
+                const targetUrl = "http://" + data.host + "/tv";
+                statusEl.innerHTML = "CONNECTING TO<br>" + data.host;
+                
+                // Update iframe source
+                frameEl.src = targetUrl;
+                frameEl.style.display = 'block';
+
+                // Display instructions if it stays loading too long
+                setTimeout(() => {
+                    if (frameEl.style.display === 'block') {
+                        statusEl.style.zIndex = "5"; // Move text behind if it worked
+                        statusEl.style.fontSize = "12px";
+                        statusEl.style.top = "20px";
+                    }
+                }, 5000);
             }
         });
 
-        context.start({ disableIdleTimeout: true });
+        context.start({ 
+            disableIdleTimeout: true,
+            statusText: "Skirmish Tactical Display"
+        });
     </script>
 </body>
 </html>
