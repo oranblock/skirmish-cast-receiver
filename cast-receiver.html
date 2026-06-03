@@ -2,108 +2,100 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SKIRMISH | TACTICAL BROADCAST</title>
-    <!-- Chromecast SDK -->
+    <title>SKIRMISH | DEBUG UPLINK</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    <!-- QR Library -->
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#050805; font-family: 'Courier New', monospace; color: #00ff88; }
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: monospace; color: #0f8; }
+        #debug-log {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 40%;
+            background: rgba(0,20,0,0.9); border-top: 1px solid #0f8;
+            padding: 10px; font-size: 12px; overflow-y: auto; z-index: 1000;
+            white-space: pre-wrap; pointer-events: none;
+        }
+        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; z-index: 50; background: #050805; }
         #overlay {
             position: absolute; inset: 0; display: flex; flex-direction: column; 
             align-items: center; justify-content: center; z-index: 100;
-            background: radial-gradient(circle, #0a1a0a 0%, #050805 100%);
-            transition: opacity 1.5s ease;
+            background: #000;
         }
-        .hud-border {
-            border: 2px solid #00ff88; padding: 40px; border-radius: 4px;
-            box-shadow: 0 0 30px rgba(0, 255, 136, 0.2); background: rgba(0,0,0,0.9);
-            text-align: center; max-width: 85%;
-        }
-        h1 { letter-spacing: 12px; font-size: 52px; margin: 0 0 20px 0; text-shadow: 0 0 15px #00ff88; }
-        .status { font-size: 20px; margin-bottom: 30px; opacity: 0.9; font-weight: bold; }
-        #qr-container { 
-            background: #fff; padding: 15px; border-radius: 8px; 
-            display: none; margin: 20px auto; width: 220px; height: 220px;
-            box-shadow: 0 0 20px rgba(255,255,255,0.1);
-        }
-        #game-frame {
-            position: absolute; inset: 0; width: 100%; height: 100%;
-            border: none; display: none; z-index: 50;
-        }
-        .scan-hint { font-size: 16px; margin-top: 20px; color: #00ff88; font-weight: bold; letter-spacing: 2px; }
+        .hud { border: 1px solid #0f8; padding: 20px; text-align: center; }
     </style>
 </head>
 <body>
 
-    <div id="overlay">
-        <div class="hud-border">
-            <h1>SKIRMISH</h1>
-            <div id="status-text" class="status">AWAITING TACTICAL HANDSHAKE...</div>
+    <div id="debug-log">--- SYSTEM BOOT / DEBUG LOG ACTIVE ---</div>
 
-            <div id="qr-container"><canvas id="qr"></canvas></div>
-            <div id="join-hint" class="scan-hint" style="display:none;">SCAN TO JOIN TACTICAL SQUAD</div>
+    <div id="overlay">
+        <div class="hud">
+            <h2>SKIRMISH TERMINAL</h2>
+            <div id="status-text">INITIALIZING CAST SDK...</div>
+            <div id="qr-container" style="display:none; margin:10px;"><canvas id="qr"></canvas></div>
         </div>
     </div>
 
-    <!-- The actual game view will load here -->
-    <iframe id="game-frame" allow="autoplay"></iframe>
+    <iframe id="game-frame"></iframe>
 
     <script>
+        const logEl = document.getElementById('debug-log');
         const statusEl = document.getElementById('status-text');
-        const qrContainer = document.getElementById('qr-container');
-        const hintEl = document.getElementById('join-hint');
         const frameEl = document.getElementById('game-frame');
-        const overlayEl = document.getElementById('overlay');
 
-        function startBroadcast(host) {
-            console.log("Starting broadcast from host:", host);
-            statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
-            
-            // 1. Show Join QR Code
-            new QRious({
-                element: document.getElementById('qr'),
-                value: "http://" + host + "/game",
-                size: 220, padding: 0
-            });
-            qrContainer.style.display = 'block';
-            hintEl.style.display = 'block';
-
-            // 2. Load the 3D Map into the background
-            frameEl.src = "http://" + host + "/tv";
-
-            // 3. Transition to battle view after 8 seconds
-            setTimeout(() => {
-                overlayEl.style.opacity = "0";
-                frameEl.style.display = "block";
-                setTimeout(() => { overlayEl.style.display = "none"; }, 1500);
-            }, 8000);
+        function log(msg, type = "INFO") {
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `\n[${time}] [${type}] ${msg}`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(`[${type}] ${msg}`);
         }
 
-        // 🛰️ GOOGLE CAST RECEIVER SETUP
+        window.onerror = (e) => log("GLOBAL ERROR: " + e, "FATAL");
+
+        function startBattle(host) {
+            log("Uplink command received for: " + host, "NET");
+            statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
+            
+            const tvUrl = "http://" + host + "/tv";
+            log("Loading iframe: " + tvUrl);
+            
+            frameEl.src = tvUrl;
+            
+            // Check if reachable
+            fetch("http://" + host + "/sys_info")
+                .then(r => log("Phone server reachable!", "OK"))
+                .catch(e => log("CANNOT REACH PHONE: Is it on same WiFi? Check firewall.", "ERR"));
+
+            setTimeout(() => {
+                document.getElementById('overlay').style.display = "none";
+                log("Transitioning to Battle View...");
+            }, 5000);
+        }
+
+        // 🛰️ CAST SDK DEBUGGING
         try {
+            log("Initializing Cast Context...");
             const context = cast.framework.CastReceiverContext.getInstance();
             const namespace = 'urn:x-cast:com.da3dee3.skirmish';
 
             context.addCustomMessageListener(namespace, (event) => {
+                log("RAW MESSAGE: " + JSON.stringify(event.data), "CAST");
                 if (event.data && event.data.host) {
-                    startBroadcast(event.data.host);
+                    startBattle(event.data.host);
                 }
             });
 
-            context.start({ 
-                disableIdleTimeout: true,
-                statusText: "Skirmish Battle Broadcast"
-            });
-            console.log("Cast Receiver Context Started");
+            const options = new cast.framework.CastReceiverOptions();
+            options.disableIdleTimeout = true;
+            
+            context.start(options);
+            log("Cast SDK Started. Awaiting Phone...");
+            statusEl.innerHTML = "READY FOR HANDSHAKE";
         } catch(e) {
-            console.warn("Cast SDK not detected. Standard web mode active.");
-            statusEl.innerHTML = "WEB MODE: USE SENDER TOOL TO LINK";
+            log("Cast SDK Init Failed: " + e.message, "ERR");
         }
 
-        // 🛠️ PC SIMULATION / POSTMESSAGE SUPPORT
+        // Support Simulation
         window.addEventListener('message', (e) => {
-            if (e.data && e.data.host) startBroadcast(e.data.host);
+            if (e.data.host) startBattle(e.data.host);
         });
     </script>
 </body>
