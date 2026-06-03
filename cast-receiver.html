@@ -1,28 +1,117 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Skirmish</title>
+    <title>SKIRMISH | TACTICAL BROADCAST</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <!-- QR Code Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+    <style>
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#050805; font-family: 'Courier New', monospace; color: #00ff88; }
+        
+        #overlay {
+            position: absolute; inset: 0; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; z-index: 100;
+            background: radial-gradient(circle, #0a1a0a 0%, #050805 100%);
+            transition: opacity 1s ease;
+        }
+
+        .hud-border {
+            border: 2px solid #00ff88; padding: 40px; border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); background: rgba(0,0,0,0.8);
+            text-align: center; max-width: 80%;
+        }
+
+        h1 { letter-spacing: 10px; font-size: 48px; margin: 0 0 20px 0; text-shadow: 0 0 10px #00ff88; }
+        .status { font-size: 18px; margin-bottom: 30px; opacity: 0.8; }
+
+        #qr-container { 
+            background: #fff; padding: 15px; border-radius: 8px; 
+            display: none; margin: 20px auto; width: 200px; height: 200px;
+        }
+
+        #game-frame {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            border: none; display: none; z-index: 50;
+        }
+
+        .scan-hint { font-size: 14px; margin-top: 15px; color: #00ff88; font-weight: bold; }
+        
+        /* Retro Scanline Effect */
+        #overlay::after {
+            content: " "; position: absolute; inset: 0; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; z-index: 101;
+        }
+    </style>
 </head>
-<body style="background:#000; color:#0f8; font-family:monospace; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;">
-    <div id="status">WAITING FOR HANDSHAKE...</div>
+<body>
+
+    <div id="overlay">
+        <div class="hud-border">
+            <h1>SKIRMISH</h1>
+            <div id="status-text" class="status">INITIALIZING SECURE UPLINK...</div>
+            
+            <div id="qr-container">
+                <canvas id="qr"></canvas>
+            </div>
+            <div id="join-hint" class="scan-hint" style="display:none;">SCAN TO JOIN TACTICAL SQUAD</div>
+        </div>
+    </div>
+
+    <!-- The actual game view will load here -->
+    <iframe id="game-frame" allow="autoplay"></iframe>
 
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const namespace = 'urn:x-cast:com.da3dee3.skirmish';
+        
+        const statusEl = document.getElementById('status-text');
+        const qrContainer = document.getElementById('qr-container');
+        const hintEl = document.getElementById('join-hint');
+        const frameEl = document.getElementById('game-frame');
+        const overlayEl = document.getElementById('overlay');
+
+        let currentHost = null;
 
         context.addCustomMessageListener(namespace, (event) => {
-            console.log('Handshake received:', event.data);
             const data = event.data;
+            console.log("Message received:", data);
 
             if (data.host) {
-                document.getElementById('status').innerText = "CONNECTING TO " + data.host + "...";
-                // 🚀 REDIRECT: This is the missing piece
-                window.location.href = "http://" + data.host + "/tv";
+                currentHost = data.host;
+                statusEl.innerHTML = "UPLINK ESTABLISHED: " + currentHost;
+                
+                // 1. Generate the Join QR Code
+                const joinUrl = "http://" + currentHost + "/game";
+                new QRious({
+                    element: document.getElementById('qr'),
+                    value: joinUrl,
+                    size: 200,
+                    padding: 0
+                });
+                qrContainer.style.display = 'block';
+                hintEl.style.display = 'block';
+
+                // 2. Prepare the Iframe (load but keep hidden for a moment)
+                const tvUrl = "http://" + currentHost + "/tv";
+                frameEl.src = tvUrl;
+
+                // 3. Auto-transition to battlefield after 5 seconds
+                // Or if your app sends a "start" message, we can trigger it then
+                setTimeout(() => {
+                    overlayEl.style.opacity = "0";
+                    frameEl.style.display = "block";
+                    setTimeout(() => overlayEl.style.display = "none", 1000);
+                }, 8000);
             }
         });
 
-        context.start({ disableIdleTimeout: true });
+        // Start the receiver
+        context.start({ 
+            disableIdleTimeout: true,
+            statusText: "Skirmish Tactical Display"
+        });
     </script>
 </body>
 </html>
