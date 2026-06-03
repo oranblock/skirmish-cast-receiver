@@ -6,10 +6,10 @@
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: 'Courier New', monospace; color: #00ff88; }
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: monospace; color: #00ff88; }
         #terminal {
             position: absolute; inset: 0; padding: 20px; font-size: 14px;
-            background: linear-gradient(180deg, #001100 0%, #000 100%);
+            background: rgba(0,20,0,0.95);
             overflow-y: auto; z-index: 1000; line-height: 1.5;
         }
         .log-entry { margin-bottom: 4px; }
@@ -30,14 +30,14 @@
 
     <div id="terminal">
         <div style="font-size: 24px; font-weight: bold; border-bottom: 1px solid #0f8; margin-bottom: 15px; padding-bottom: 5px;">
-            SKIRMISH_OS v4.0.1 DIAGNOSTIC_TERMINAL
+            SKIRMISH_OS v4.1.0 DIAGNOSTIC_TERMINAL
         </div>
         <div id="output"></div>
     </div>
 
     <div id="manual-input-box">
         <div style="font-size: 10px; margin-bottom: 10px;">MANUAL UPLINK OVERRIDE</div>
-        <input type="text" id="manual-host" placeholder="10.42.0.71:XXXXX">
+        <input type="text" id="manual-host" placeholder="IP:PORT">
         <button onclick="manualConnect()">LINK</button>
     </div>
 
@@ -57,56 +57,32 @@
         }
 
         log("System boot sequence initiated...");
-        log("Checking browser capabilities...", "info");
-        log(`Resolution: ${window.innerWidth}x${window.innerHeight}`, "info");
+        log(`Viewport: ${window.innerWidth}x${window.innerHeight}`, "info");
 
-        // 🛡️ STEP 1: VERIFY CHROMECAST SDK
-        try {
-            const context = cast.framework.CastReceiverContext.getInstance();
-            const namespace = 'urn:x-cast:com.da3dee3.skirmish';
-            log("Cast SDK library found. Initializing context...", "info");
-
-            context.addCustomMessageListener(namespace, (event) => {
-                log("INCOMING CAST PACKET DETECTED!", "log-success");
-                log(`DATA: ${JSON.stringify(event.data)}`, "info");
-                if (event.data.host) triggerUplink(event.data.host);
-            });
-
-            context.start({ disableIdleTimeout: true });
-            log(`Receiver active on namespace: ${namespace}`, "info");
-        } catch(e) {
-            log("Cast SDK not detected. Switching to Manual Web Mode.", "warn");
-        }
-
-        // 🛡️ STEP 2: HANDSHAKE LOGIC
         function triggerUplink(host) {
-            log(`Establishing handshake with mobile host: ${host}...`, "info");
+            log(`Starting handshake with: ${host}`, "info");
             localStorage.setItem('last_host', host);
 
-            const tvUrl = `http://${host}/tv`;
-            log(`Preparing iframe source: ${tvUrl}`, "info");
-            
-            // Test if the phone server is even reachable
-            log("Pinging phone server for sys_info...", "info");
-            fetch(`http://${host}/sys_info`, { mode: 'cors' })
+            fetch(`http://${host}/sys_info`)
                 .then(r => r.json())
                 .then(data => {
-                    log("CONNECTION VERIFIED: Phone is responding!", "log-success");
-                    log(`SERVER_STATUS: Phase=${data.phase}, Ticks=${data.tick}, Units=${data.bodies}`, "info");
-                    
-                    frameEl.src = tvUrl;
-                    log("Iframe loading started. Switching to Battle View in 5s...", "info");
-                    
+                    log("CONNECTION VERIFIED: Phone is alive!", "log-success");
+                    log(`SERVER_STATUS: Phase=${data.phase}, Units=${data.bodies}`, "info");
+
+                    frameEl.src = `http://${host}/tv`;
+                    log("Iframe loading... wait 5s.", "info");
+
                     setTimeout(() => {
-                        terminal.style.display = "none";
+                        terminal.style.background = "rgba(0,0,0,0.5)"; // KEEP LOGS VISIBLE
+                        terminal.style.height = "25%";
+                        terminal.style.top = "75%";
                         document.getElementById('manual-input-box').style.display = "none";
                         frameEl.style.display = "block";
-                        log("Transition complete.", "info");
+                        log("Map layer activated.", "info");
                     }, 5000);
                 })
                 .catch(err => {
-                    log(`NETWORK FAILURE: Cannot reach http://${host}`, "error");
-                    log("REASON: Likely firewall, phone screen off, or different WiFi bands.", "warn");
+                    log(`NETWORK FAILURE: Is ${host} correct?`, "error");
                 });
         }
 
@@ -115,16 +91,23 @@
             if (host) triggerUplink(host);
         }
 
-        // Recovery
-        const last = localStorage.getItem('last_host');
-        if (last) {
-            log(`Found cached host: ${last}. Auto-filling override.`, "info");
-            document.getElementById('manual-host').value = last;
+        try {
+            const context = cast.framework.CastReceiverContext.getInstance();
+            const namespace = 'urn:x-cast:com.da3dee3.skirmish';
+            context.addCustomMessageListener(namespace, (event) => {
+                log("CAST SIGNAL RECEIVED!", "log-success");
+                if (event.data.host) triggerUplink(event.data.host);
+            });
+            context.start({ disableIdleTimeout: true });
+            log("Cast SDK listening...");
+        } catch(e) {
+            log("Running in standard browser mode.", "warn");
         }
 
-        // Global Error Catching
-        window.onerror = (msg, url, line) => log(`RUNTIME ERROR: ${msg} at ${line}`, "error");
+        const last = localStorage.getItem('last_host');
+        if (last) document.getElementById('manual-host').value = last;
 
+        window.onerror = (msg, url, line) => log(`SCRIPT ERROR: ${msg} line:${line}`, "error");
     </script>
 </body>
 </html>
