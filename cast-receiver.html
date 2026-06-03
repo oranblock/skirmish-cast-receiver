@@ -1,102 +1,101 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>SKIRMISH | DEBUG UPLINK</title>
+    <title>SKIRMISH | TACTICAL BROADCAST</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: monospace; color: #0f8; }
-        #debug-log {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 40%;
-            background: rgba(0,20,0,0.9); border-top: 1px solid #0f8;
-            padding: 10px; font-size: 12px; overflow-y: auto; z-index: 1000;
-            white-space: pre-wrap; pointer-events: none;
-        }
-        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; z-index: 50; background: #050805; }
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#050805; font-family: 'Courier New', monospace; color: #00ff88; }
         #overlay {
-            position: absolute; inset: 0; display: flex; flex-direction: column; 
+            position: absolute; inset: 0; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 100;
-            background: #000;
+            background: radial-gradient(circle, #0a1a0a 0%, #050805 100%);
+            transition: opacity 1s ease;
         }
-        .hud { border: 1px solid #0f8; padding: 20px; text-align: center; }
+        .hud-border {
+            border: 2px solid #00ff88; padding: 40px; border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); background: rgba(0,0,0,0.8);
+            text-align: center; max-width: 80%;
+        }
+        h1 { letter-spacing: 10px; font-size: 48px; margin: 0 0 20px 0; text-shadow: 0 0 10px #00ff88; }
+        .status { font-size: 18px; margin-bottom: 30px; opacity: 0.8; }
+        #qr-container {
+            background: #fff; padding: 15px; border-radius: 8px;
+            display: none; margin: 20px auto; width: 200px; height: 200px;
+        }
+        #game-frame {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            border: none; display: none; z-index: 50;
+        }
+        .scan-hint { font-size: 14px; margin-top: 15px; color: #00ff88; font-weight: bold; }
+        #overlay::after {
+            content: " "; position: absolute; inset: 0; pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; z-index: 101;
+        }
     </style>
 </head>
 <body>
-
-    <div id="debug-log">--- SYSTEM BOOT / DEBUG LOG ACTIVE ---</div>
-
     <div id="overlay">
-        <div class="hud">
-            <h2>SKIRMISH TERMINAL</h2>
-            <div id="status-text">INITIALIZING CAST SDK...</div>
-            <div id="qr-container" style="display:none; margin:10px;"><canvas id="qr"></canvas></div>
+        <div class="hud-border">
+            <h1>SKIRMISH</h1>
+            <div id="status-text" class="status">INITIALIZING SECURE UPLINK...</div>
+
+            <div id="manual-connect" style="margin-top:20px;">
+                <input type="text" id="manual-host" placeholder="ENTER PHONE IP:PORT" style="background:#000; border:1px solid #0f8; color:#0f8; padding:8px; font-family:monospace; text-align:center;">
+                <button onclick="manualConnect()" style="background:#0f8; color:#000; border:none; padding:8px 16px; font-weight:bold; cursor:pointer;">CONNECT PC AS TV</button>
+            </div>
+
+            <div id="qr-container"><canvas id="qr"></canvas></div>
+            <div id="join-hint" class="scan-hint" style="display:none;">SCAN TO JOIN TACTICAL SQUAD</div>
         </div>
     </div>
-
-    <iframe id="game-frame"></iframe>
-
+    <iframe id="game-frame" allow="autoplay"></iframe>
     <script>
-        const logEl = document.getElementById('debug-log');
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const namespace = 'urn:x-cast:com.da3dee3.skirmish';
         const statusEl = document.getElementById('status-text');
+        const qrContainer = document.getElementById('qr-container');
+        const hintEl = document.getElementById('join-hint');
         const frameEl = document.getElementById('game-frame');
+        const overlayEl = document.getElementById('overlay');
 
-        function log(msg, type = "INFO") {
-            const time = new Date().toLocaleTimeString();
-            logEl.innerHTML += `\n[${time}] [${type}] ${msg}`;
-            logEl.scrollTop = logEl.scrollHeight;
-            console.log(`[${type}] ${msg}`);
-        }
-
-        window.onerror = (e) => log("GLOBAL ERROR: " + e, "FATAL");
-
-        function startBattle(host) {
-            log("Uplink command received for: " + host, "NET");
+        function triggerHandshake(host) {
             statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
-            
-            const tvUrl = "http://" + host + "/tv";
-            log("Loading iframe: " + tvUrl);
-            
-            frameEl.src = tvUrl;
-            
-            // Check if reachable
-            fetch("http://" + host + "/sys_info")
-                .then(r => log("Phone server reachable!", "OK"))
-                .catch(e => log("CANNOT REACH PHONE: Is it on same WiFi? Check firewall.", "ERR"));
+            new QRious({
+                element: document.getElementById('qr'),
+                value: "http://" + host + "/game",
+                size: 200, padding: 0
+            });
+            qrContainer.style.display = 'block';
+            hintEl.style.display = 'block';
+            document.getElementById('manual-connect').style.display = 'none';
 
+            frameEl.src = "http://" + host + "/tv";
             setTimeout(() => {
-                document.getElementById('overlay').style.display = "none";
-                log("Transitioning to Battle View...");
+                overlayEl.style.opacity = "0";
+                frameEl.style.display = "block";
+                setTimeout(() => overlayEl.style.display = "none", 1000);
             }, 5000);
         }
 
-        // 🛰️ CAST SDK DEBUGGING
-        try {
-            log("Initializing Cast Context...");
-            const context = cast.framework.CastReceiverContext.getInstance();
-            const namespace = 'urn:x-cast:com.da3dee3.skirmish';
-
-            context.addCustomMessageListener(namespace, (event) => {
-                log("RAW MESSAGE: " + JSON.stringify(event.data), "CAST");
-                if (event.data && event.data.host) {
-                    startBattle(event.data.host);
-                }
-            });
-
-            const options = new cast.framework.CastReceiverOptions();
-            options.disableIdleTimeout = true;
-            
-            context.start(options);
-            log("Cast SDK Started. Awaiting Phone...");
-            statusEl.innerHTML = "READY FOR HANDSHAKE";
-        } catch(e) {
-            log("Cast SDK Init Failed: " + e.message, "ERR");
+        function manualConnect() {
+            const host = document.getElementById('manual-host').value;
+            if (host) triggerHandshake(host);
         }
 
-        // Support Simulation
-        window.addEventListener('message', (e) => {
-            if (e.data.host) startBattle(e.data.host);
+        // Handle the incoming message from Android
+        context.addCustomMessageListener(namespace, (event) => {
+            if (event.data.host) triggerHandshake(event.data.host);
         });
+
+        // 🛠️ DEV SIMULATION SUPPORT
+        window.addEventListener('message', (e) => {
+            if (e.data.host) triggerHandshake(e.data.host);
+        });
+
+        context.start({ disableIdleTimeout: true, statusText: "Skirmish Tactical Display" });
     </script>
 </body>
 </html>
