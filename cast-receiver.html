@@ -2,256 +2,129 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SKIRMISH | SYSTEM TERMINAL</title>
+    <title>SKIRMISH | SYSTEM DIAGNOSTIC</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: monospace; color: #0f8; }
-
-        #main-ui {
-            position: absolute; inset: 0; display: flex;
-            flex-direction: row; z-index: 100;
-            background: #000;
+        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: 'Courier New', monospace; color: #00ff88; }
+        #terminal {
+            position: absolute; inset: 0; padding: 20px; font-size: 14px;
+            background: linear-gradient(180deg, #001100 0%, #000 100%);
+            overflow-y: auto; z-index: 1000; line-height: 1.5;
         }
-
-        #terminal-side {
-            width: 40%; height: 100%; border-right: 1px solid #0f8;
-            display: flex; flex-direction: column; background: rgba(0,20,0,0.95);
+        .log-entry { margin-bottom: 4px; }
+        .log-info { color: #00ff88; }
+        .log-warn { color: #ffff00; font-weight: bold; }
+        .log-error { color: #ff3333; font-weight: bold; background: rgba(255,0,0,0.1); }
+        .log-success { color: #ffffff; background: #004400; padding: 0 5px; }
+        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; z-index: 10; display: none; }
+        #manual-input-box {
+            position: fixed; top: 50%; right: 20px; transform: translateY(-50%);
+            background: rgba(0,20,0,0.9); border: 1px solid #0f8; padding: 20px; z-index: 1100;
         }
-
-        #log-output {
-            flex: 1; padding: 15px; font-size: 13px;
-            overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
-        }
-
-        #hud-side {
-            width: 60%; height: 100%; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; text-align: center;
-        }
-
-        .border-box { border: 1px solid #0f8; padding: 30px; background: rgba(0,0,0,0.5); }
-        h1 { letter-spacing: 8px; margin: 0 0 10px 0; color: #fff; }
-        .status { color: #0f8; font-size: 16px; margin-bottom: 20px; }
-
-        #qr-container { background: #fff; padding: 10px; display: none; margin: 20px 0; }
-        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; z-index: 10; background: #000; display: none; }
-
-        input { background: #000; border: 1px solid #0f8; color: #0f8; padding: 10px; width: 220px; font-family: monospace; }
-        button { background: #0f8; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; }
-
-        .hint { color: #555; font-size: 11px; margin-top: 15px; }
+        input { background: #000; border: 1px solid #0f8; color: #0f8; padding: 10px; font-family: monospace; width: 180px; }
+        button { background: #0f8; color: #000; border: none; padding: 10px 15px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <iframe id="game-frame"></iframe>
-
-    <div id="main-ui">
-        <div id="terminal-side">
-            <div style="padding: 10px; border-bottom: 1px solid #0f8; font-weight: bold; background: #0f8; color: #000;">
-                SYSTEM LOGS / DIAGNOSTICS
-            </div>
-            <div id="log-output">Initializing secure environment...</div>
+    <div id="terminal">
+        <div style="font-size: 24px; font-weight: bold; border-bottom: 1px solid #0f8; margin-bottom: 15px; padding-bottom: 5px;">
+            SKIRMISH_OS v4.0.1 DIAGNOSTIC_TERMINAL
         </div>
-
-        <div id="hud-side">
-            <div class="border-box">
-                <h1>SKIRMISH</h1>
-                <div id="status-text" class="status">AWAITING HANDSHAKE...</div>
-
-                <div id="qr-container"><canvas id="qr"></canvas></div>
-                <div id="join-hint" style="display:none; font-weight:bold; margin-bottom:20px;">SCAN TO JOIN MATCH</div>
-
-                <div id="manual-connect">
-                    <input type="text" id="manual-host" placeholder="ENTER PHONE IP:PORT">
-                    <button onclick="manualConnect()">FORCE LINK</button>
-                    <div class="hint">Type the IP:PORT shown on your mobile device</div>
-                </div>
-            </div>
-        </div>
+        <div id="output"></div>
     </div>
 
-    <script>
-        const logEl = document.getElementById('log-output');
-        const statusEl = document.getElementById('status-text');
-        const qrContainer = document.getElementById('qr-container');
-        const frameEl = document.getElementById('game-frame');
-        const mainUi = document.getElementById('main-ui');
+    <div id="manual-input-box">
+        <div style="font-size: 10px; margin-bottom: 10px;">MANUAL UPLINK OVERRIDE</div>
+        <input type="text" id="manual-host" placeholder="10.42.0.71:XXXXX">
+        <button onclick="manualConnect()">LINK</button>
+    </div>
 
-        function log(msg, type = "INFO") {
-            const time = new Date().toLocaleTimeString();
-            logEl.innerHTML += `\n[${time}] [${type}] ${msg}`;
-            logEl.scrollTop = logEl.scrollHeight;
+    <iframe id="game-frame"></iframe>
+
+    <script>
+        const output = document.getElementById('output');
+        const frameEl = document.getElementById('game-frame');
+        const terminal = document.getElementById('terminal');
+
+        function log(msg, type = "info") {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] > ${msg}`;
+            output.appendChild(entry);
+            terminal.scrollTop = terminal.scrollHeight;
         }
 
-        window.onerror = (e) => log("GLOBAL SCRIPT ERROR: " + e, "FATAL");
+        log("System boot sequence initiated...");
+        log("Checking browser capabilities...", "info");
+        log(`Resolution: ${window.innerWidth}x${window.innerHeight}`, "info");
 
-        function triggerHandshake(host) {
-            log("Uplink command received for: " + host, "NET");
-            statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
-            localStorage.setItem('last_skirmish_host', host);
+        // 🛡️ STEP 1: VERIFY CHROMECAST SDK
+        try {
+            const context = cast.framework.CastReceiverContext.getInstance();
+            const namespace = 'urn:x-cast:com.da3dee3.skirmish';
+            log("Cast SDK library found. Initializing context...", "info");
 
-            // 1. Generate Join QR
-            new QRious({
-                element: document.getElementById('qr'),
-                value: "http://" + host + "/game",
-                size: 200, padding: 0
+            context.addCustomMessageListener(namespace, (event) => {
+                log("INCOMING CAST PACKET DETECTED!", "log-success");
+                log(`DATA: ${JSON.stringify(event.data)}`, "info");
+                if (event.data.host) triggerUplink(event.data.host);
             });
-            qrContainer.style.display = 'inline-block';
-            document.getElementById('join-hint').style.display = 'block';
-            document.getElementById('manual-connect').style.display = 'none';
 
-            // 2. Load the actual 3D view
-            const tvUrl = "http://" + host + "/tv";
-            log("Loading game frame: " + tvUrl);
-            frameEl.src = tvUrl;
+            context.start({ disableIdleTimeout: true });
+            log(`Receiver active on namespace: ${namespace}`, "info");
+        } catch(e) {
+            log("Cast SDK not detected. Switching to Manual Web Mode.", "warn");
+        }
 
-            // 3. Verify reachability
-            fetch("http://" + host + "/sys_info")
-                .then(() => log("Phone server verified reachable!", "OK"))
-                .catch((e) => log("NETWORK ERROR: Cannot reach phone. check WiFi/Firewall.", "ERR"));
+        // 🛡️ STEP 2: HANDSHAKE LOGIC
+        function triggerUplink(host) {
+            log(`Establishing handshake with mobile host: ${host}...`, "info");
+            localStorage.setItem('last_host', host);
 
-            // 4. Reveal game after load delay
-            setTimeout(() => {
-                log("Transitioning to Tactical View. Closing terminal...");
-                mainUi.style.opacity = "0";
-                frameEl.style.display = "block";
-                setTimeout(() => { mainUi.style.display = "none"; }, 1000);
-            }, 8000);
+            const tvUrl = `http://${host}/tv`;
+            log(`Preparing iframe source: ${tvUrl}`, "info");
+            
+            // Test if the phone server is even reachable
+            log("Pinging phone server for sys_info...", "info");
+            fetch(`http://${host}/sys_info`, { mode: 'cors' })
+                .then(r => r.json())
+                .then(data => {
+                    log("CONNECTION VERIFIED: Phone is responding!", "log-success");
+                    log(`SERVER_STATUS: Phase=${data.phase}, Ticks=${data.tick}, Units=${data.bodies}`, "info");
+                    
+                    frameEl.src = tvUrl;
+                    log("Iframe loading started. Switching to Battle View in 5s...", "info");
+                    
+                    setTimeout(() => {
+                        terminal.style.display = "none";
+                        document.getElementById('manual-input-box').style.display = "none";
+                        frameEl.style.display = "block";
+                        log("Transition complete.", "info");
+                    }, 5000);
+                })
+                .catch(err => {
+                    log(`NETWORK FAILURE: Cannot reach http://${host}`, "error");
+                    log("REASON: Likely firewall, phone screen off, or different WiFi bands.", "warn");
+                });
         }
 
         function manualConnect() {
             const host = document.getElementById('manual-host').value.trim();
-            if (host) triggerHandshake(host);
+            if (host) triggerUplink(host);
         }
 
-        // Persistent host recovery
-        window.addEventListener('load', () => {
-            const last = localStorage.getItem('last_skirmish_host');
-            if (last) document.getElementById('manual-host').value = last;
-        });
-
-        // 🛰️ GOOGLE CAST SDK
-        try {
-            log("Starting Cast Receiver Context...");
-            const context = cast.framework.CastReceiverContext.getInstance();
-            const namespace = 'urn:x-cast:com.da3dee3.skirmish';
-
-            context.addCustomMessageListener(namespace, (event) => {
-                log("CAST MESSAGE: " + JSON.stringify(event.data), "CAST");
-                if (event.data && event.data.host) triggerHandshake(event.data.host);
-            });
-
-            context.start({ disableIdleTimeout: true });
-            log("Cast SDK listening on namespace " + namespace);
-        } catch(e) {
-            log("Cast SDK not detected (Standard Browser Mode)");
+        // Recovery
+        const last = localStorage.getItem('last_host');
+        if (last) {
+            log(`Found cached host: ${last}. Auto-filling override.`, "info");
+            document.getElementById('manual-host').value = last;
         }
 
-        // Support PostMessage Simulation
-        window.addEventListener('message', (e) => {
-            if (e.data.host) triggerHandshake(e.data.host);
-        });
-    </script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-    <title>SKIRMISH | TACTICAL BROADCAST</title>
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
-    <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#050805; font-family: 'Courier New', monospace; color: #00ff88; }
-        #overlay {
-            position: absolute; inset: 0; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; z-index: 100;
-            background: radial-gradient(circle, #0a1a0a 0%, #050805 100%);
-            transition: opacity 1s ease;
-        }
-        .hud-border {
-            border: 2px solid #00ff88; padding: 40px; border-radius: 4px;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.2); background: rgba(0,0,0,0.8);
-            text-align: center; max-width: 80%;
-        }
-        h1 { letter-spacing: 10px; font-size: 48px; margin: 0 0 20px 0; text-shadow: 0 0 10px #00ff88; }
-        .status { font-size: 18px; margin-bottom: 30px; opacity: 0.8; }
-        #qr-container {
-            background: #fff; padding: 15px; border-radius: 8px;
-            display: none; margin: 20px auto; width: 200px; height: 200px;
-        }
-        #game-frame {
-            position: absolute; inset: 0; width: 100%; height: 100%;
-            border: none; display: none; z-index: 50;
-        }
-        .scan-hint { font-size: 14px; margin-top: 15px; color: #00ff88; font-weight: bold; }
-        #overlay::after {
-            content: " "; position: absolute; inset: 0; pointer-events: none;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 4px, 3px 100%; z-index: 101;
-        }
-    </style>
-</head>
-<body>
-    <div id="overlay">
-        <div class="hud-border">
-            <h1>SKIRMISH</h1>
-            <div id="status-text" class="status">INITIALIZING SECURE UPLINK...</div>
+        // Global Error Catching
+        window.onerror = (msg, url, line) => log(`RUNTIME ERROR: ${msg} at ${line}`, "error");
 
-            <div id="manual-connect" style="margin-top:20px;">
-                <input type="text" id="manual-host" placeholder="ENTER PHONE IP:PORT" style="background:#000; border:1px solid #0f8; color:#0f8; padding:8px; font-family:monospace; text-align:center;">
-                <button onclick="manualConnect()" style="background:#0f8; color:#000; border:none; padding:8px 16px; font-weight:bold; cursor:pointer;">CONNECT PC AS TV</button>
-            </div>
-
-            <div id="qr-container"><canvas id="qr"></canvas></div>
-            <div id="join-hint" class="scan-hint" style="display:none;">SCAN TO JOIN TACTICAL SQUAD</div>
-        </div>
-    </div>
-    <iframe id="game-frame" allow="autoplay"></iframe>
-    <script>
-        const context = cast.framework.CastReceiverContext.getInstance();
-        const namespace = 'urn:x-cast:com.da3dee3.skirmish';
-        const statusEl = document.getElementById('status-text');
-        const qrContainer = document.getElementById('qr-container');
-        const hintEl = document.getElementById('join-hint');
-        const frameEl = document.getElementById('game-frame');
-        const overlayEl = document.getElementById('overlay');
-
-        function triggerHandshake(host) {
-            statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
-            new QRious({
-                element: document.getElementById('qr'),
-                value: "http://" + host + "/game",
-                size: 200, padding: 0
-            });
-            qrContainer.style.display = 'block';
-            hintEl.style.display = 'block';
-            document.getElementById('manual-connect').style.display = 'none';
-
-            frameEl.src = "http://" + host + "/tv";
-            setTimeout(() => {
-                overlayEl.style.opacity = "0";
-                frameEl.style.display = "block";
-                setTimeout(() => overlayEl.style.display = "none", 1000);
-            }, 5000);
-        }
-
-        function manualConnect() {
-            const host = document.getElementById('manual-host').value;
-            if (host) triggerHandshake(host);
-        }
-
-        // Handle the incoming message from Android
-        context.addCustomMessageListener(namespace, (event) => {
-            if (event.data.host) triggerHandshake(event.data.host);
-        });
-
-        // 🛠️ DEV SIMULATION SUPPORT
-        window.addEventListener('message', (e) => {
-            if (e.data.host) triggerHandshake(e.data.host);
-        });
-
-        context.start({ disableIdleTimeout: true, statusText: "Skirmish Tactical Display" });
     </script>
 </body>
 </html>
