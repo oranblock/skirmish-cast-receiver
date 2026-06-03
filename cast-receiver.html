@@ -7,54 +7,39 @@
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
         body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#050805; font-family: 'Courier New', monospace; color: #00ff88; }
-
         #overlay {
             position: absolute; inset: 0; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 100;
             background: radial-gradient(circle, #0a1a0a 0%, #050805 100%);
             transition: opacity 1.5s ease;
         }
-
         .hud-border {
             border: 2px solid #00ff88; padding: 40px; border-radius: 4px;
             box-shadow: 0 0 30px rgba(0, 255, 136, 0.2); background: rgba(0,0,0,0.9);
             text-align: center; max-width: 85%;
         }
-
         h1 { letter-spacing: 12px; font-size: 52px; margin: 0 0 20px 0; text-shadow: 0 0 15px #00ff88; }
         .status { font-size: 20px; margin-bottom: 30px; opacity: 0.9; font-weight: bold; }
-
-        #qr-container {
-            background: #fff; padding: 15px; border-radius: 8px;
-            display: none; margin: 20px auto; width: 220px; height: 220px;
-            box-shadow: 0 0 20px rgba(255,255,255,0.1);
-        }
-
-        #game-frame {
-            position: absolute; inset: 0; width: 100%; height: 100%;
-            border: none; display: none; z-index: 50;
-        }
-
-        .scan-hint { font-size: 16px; margin-top: 20px; color: #00ff88; font-weight: bold; letter-spacing: 2px; }
+        #qr-container { background: #fff; padding: 15px; border-radius: 8px; display: none; margin: 20px auto; width: 220px; height: 220px; }
+        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; display: none; z-index: 50; }
+        #manual-box { position: fixed; bottom: 10px; right: 10px; opacity: 0.2; z-index: 1000; }
+        #manual-box:hover { opacity: 1.0; }
     </style>
 </head>
 <body>
-
     <div id="overlay">
         <div class="hud-border">
             <h1>SKIRMISH</h1>
             <div id="status-text" class="status">AWAITING TACTICAL UPLINK...</div>
-
-            <div id="qr-container">
-                <canvas id="qr"></canvas>
-            </div>
-            <div id="join-hint" class="scan-hint" style="display:none;">SCAN TO JOIN TACTICAL SQUAD</div>
+            <div id="qr-container"><canvas id="qr"></canvas></div>
+            <div id="join-hint" style="display:none; font-weight:bold; margin-top:20px;">SCAN TO JOIN TACTICAL SQUAD</div>
         </div>
     </div>
-
-    <!-- The actual game view will load here -->
     <iframe id="game-frame" allow="autoplay"></iframe>
-
+    <div id="manual-box">
+        <input type="text" id="manual-host" placeholder="IP:PORT" style="background:#000; border:1px solid #0f8; color:#0f8; width:120px; font-size:10px;">
+        <button onclick="manualConnect()" style="font-size:10px;">LINK</button>
+    </div>
     <script>
         const statusEl = document.getElementById('status-text');
         const qrContainer = document.getElementById('qr-container');
@@ -63,28 +48,38 @@
         const overlayEl = document.getElementById('overlay');
 
         function triggerHandshake(host) {
+            console.log("Handshake starting for:", host);
             statusEl.innerHTML = "UPLINK ESTABLISHED: " + host;
 
             new QRious({
                 element: document.getElementById('qr'),
                 value: "http://" + host + "/game",
-                size: 220,
-                padding: 0
+                size: 220, padding: 0
             });
             qrContainer.style.display = 'block';
             hintEl.style.display = 'block';
 
-            const tvUrl = "http://" + host + "/tv";
+            // 🚀 CACHE BUSTER: Force the TV browser to download the latest script
+            const tvUrl = "http://" + host + "/tv?t=" + Date.now();
             frameEl.src = tvUrl;
 
             setTimeout(() => {
                 overlayEl.style.opacity = "0";
                 frameEl.style.display = "block";
-                setTimeout(() => overlayEl.style.display = "none", 1500);
+                setTimeout(() => { overlayEl.style.display = "none"; }, 1500);
             }, 8000);
         }
 
-        // CAST SDK
+        function manualConnect() {
+            const host = document.getElementById('manual-host').value.trim();
+            if (host) triggerHandshake(host);
+        }
+
+        // AUTO-DETECT HOST (If running locally)
+        if (location.hostname !== 'oranblock.github.io' && location.port) {
+            setTimeout(() => triggerHandshake(location.hostname + ":" + location.port), 500);
+        }
+
         try {
             const context = cast.framework.CastReceiverContext.getInstance();
             const namespace = 'urn:x-cast:com.da3dee3.skirmish';
