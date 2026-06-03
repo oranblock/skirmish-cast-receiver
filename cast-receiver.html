@@ -2,87 +2,132 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SKIRMISH | SYSTEM DIAGNOSTIC</title>
+    <title>SKIRMISH | SYSTEM TERMINAL</title>
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
     <style>
-        body, html { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; font-family: monospace; color: #00ff88; }
-        #terminal {
-            position: absolute; inset: 0; padding: 20px; font-size: 14px;
-            background: rgba(0,20,0,0.95);
-            overflow-y: auto; z-index: 1000; line-height: 1.5;
+        body, html {
+            margin:0; padding:0; width:100%; height:100%;
+            overflow:hidden; background:#000;
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            color: #00ff88;
         }
-        .log-entry { margin-bottom: 4px; }
+
+        /* THE TERMINAL - Now at the TOP and very clear */
+        #terminal {
+            position: absolute;
+            top: 20px; left: 20px; right: 20px;
+            height: 300px; /* Large enough to read */
+            background: rgba(0,10,0,0.85);
+            border: 2px solid #0f8;
+            padding: 15px;
+            font-size: 18px; /* Bigger font for TV */
+            overflow-y: auto;
+            z-index: 2000;
+            line-height: 1.3;
+            box-shadow: 0 0 20px rgba(0,255,136,0.3);
+            display: flex;
+            flex-direction: column-reverse; /* Newest logs at the bottom, auto scroll */
+        }
+
+        #log-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-entry { margin-bottom: 5px; border-left: 3px solid #0f8; padding-left: 10px; }
         .log-info { color: #00ff88; }
         .log-warn { color: #ffff00; font-weight: bold; }
-        .log-error { color: #ff3333; font-weight: bold; background: rgba(255,0,0,0.1); }
-        .log-success { color: #ffffff; background: #004400; padding: 0 5px; }
-        #game-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; z-index: 10; display: none; }
-        #manual-input-box {
-            position: fixed; top: 50%; right: 20px; transform: translateY(-50%);
-            background: rgba(0,20,0,0.9); border: 1px solid #0f8; padding: 20px; z-index: 1100;
+        .log-error { color: #ff3333; font-weight: bold; background: rgba(255,0,0,0.2); }
+        .log-success { color: #fff; background: #008800; padding: 0 5px; }
+
+        #game-frame {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            border: none; z-index: 10; background: #050810;
+            display: none;
         }
-        input { background: #000; border: 1px solid #0f8; color: #0f8; padding: 10px; font-family: monospace; width: 180px; }
-        button { background: #0f8; color: #000; border: none; padding: 10px 15px; font-weight: bold; cursor: pointer; }
+
+        #manual-input-box {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,20,0,0.95); border: 2px solid #0f8; padding: 25px;
+            z-index: 2100; text-align: center;
+        }
+
+        input {
+            background: #000; border: 1px solid #0f8; color: #0f8;
+            padding: 12px; font-family: monospace; width: 250px; font-size: 20px;
+        }
+        button {
+            background: #0f8; color: #000; border: none;
+            padding: 12px 25px; font-weight: bold; cursor: pointer;
+            font-size: 20px; margin-top: 10px;
+        }
     </style>
 </head>
 <body>
 
+    <iframe id="game-frame"></iframe>
+
     <div id="terminal">
-        <div style="font-size: 24px; font-weight: bold; border-bottom: 1px solid #0f8; margin-bottom: 15px; padding-bottom: 5px;">
-            SKIRMISH_OS v4.1.0 DIAGNOSTIC_TERMINAL
+        <div id="log-container">
+            <div class="log-entry log-success">SYSTEM BOOT... TERMINAL ACTIVE</div>
         </div>
-        <div id="output"></div>
     </div>
 
     <div id="manual-input-box">
-        <div style="font-size: 10px; margin-bottom: 10px;">MANUAL UPLINK OVERRIDE</div>
+        <div style="font-size: 14px; margin-bottom: 10px; letter-spacing: 2px;">MANUAL UPLINK COMMAND</div>
         <input type="text" id="manual-host" placeholder="IP:PORT">
-        <button onclick="manualConnect()">LINK</button>
+        <button onclick="manualConnect()">ESTABLISH LINK</button>
     </div>
 
-    <iframe id="game-frame"></iframe>
-
     <script>
-        const output = document.getElementById('output');
+        const logContainer = document.getElementById('log-container');
         const frameEl = document.getElementById('game-frame');
         const terminal = document.getElementById('terminal');
 
         function log(msg, type = "info") {
             const entry = document.createElement('div');
             entry.className = `log-entry log-${type}`;
-            entry.innerHTML = `[${new Date().toLocaleTimeString()}] > ${msg}`;
-            output.appendChild(entry);
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `[${time}] > ${msg}`;
+            logContainer.appendChild(entry);
+
+            // Auto scroll to bottom
             terminal.scrollTop = terminal.scrollHeight;
         }
 
-        log("System boot sequence initiated...");
-        log(`Viewport: ${window.innerWidth}x${window.innerHeight}`, "info");
+        log("Checking hardware acceleration...");
+        log(`Viewport established: ${window.innerWidth}x${window.innerHeight}`, "info");
 
         function triggerUplink(host) {
-            log(`Starting handshake with: ${host}`, "info");
+            log(`COMMAND RECEIVED: CONNECT TO ${host}`, "log-success");
             localStorage.setItem('last_host', host);
 
-            fetch(`http://${host}/sys_info`)
+            const tvUrl = `http://${host}/tv`;
+            log(`Uplink URL: ${tvUrl}`);
+
+            log("Pinging phone server for validation...");
+            fetch(`http://${host}/sys_info`, { mode: 'cors' })
                 .then(r => r.json())
                 .then(data => {
-                    log("CONNECTION VERIFIED: Phone is alive!", "log-success");
-                    log(`SERVER_STATUS: Phase=${data.phase}, Units=${data.bodies}`, "info");
+                    log("HANDSHAKE VERIFIED. Phone is responding!", "log-success");
+                    log(`STATUS: Phase=${data.phase}, Units=${data.bodies}`, "info");
 
-                    frameEl.src = `http://${host}/tv`;
-                    log("Iframe loading... wait 5s.", "info");
+                    log("Activating Tactical Iframe Layer...");
+                    frameEl.src = tvUrl;
 
                     setTimeout(() => {
-                        terminal.style.background = "rgba(0,0,0,0.5)"; // KEEP LOGS VISIBLE
-                        terminal.style.height = "25%";
-                        terminal.style.top = "75%";
+                        log("Switching to Map Display Mode.", "info");
                         document.getElementById('manual-input-box').style.display = "none";
                         frameEl.style.display = "block";
-                        log("Map layer activated.", "info");
-                    }, 5000);
+                        // Terminal stays at the top but shrinks slightly
+                        terminal.style.height = "150px";
+                        terminal.style.opacity = "0.7";
+                    }, 4000);
                 })
                 .catch(err => {
-                    log(`NETWORK FAILURE: Is ${host} correct?`, "error");
+                    log(`UPLINK FAILED: Connection Refused at ${host}`, "error");
+                    log("Check if Phone Hotspot is on and App is running.", "warn");
                 });
         }
 
@@ -91,23 +136,28 @@
             if (host) triggerUplink(host);
         }
 
+        // CAST SDK
         try {
+            log("Attaching to Google Cast Framework...");
             const context = cast.framework.CastReceiverContext.getInstance();
             const namespace = 'urn:x-cast:com.da3dee3.skirmish';
             context.addCustomMessageListener(namespace, (event) => {
-                log("CAST SIGNAL RECEIVED!", "log-success");
+                log("WIRELESS CAST PACKET DETECTED", "log-success");
                 if (event.data.host) triggerUplink(event.data.host);
             });
             context.start({ disableIdleTimeout: true });
-            log("Cast SDK listening...");
+            log("Cast SDK online and listening.");
         } catch(e) {
-            log("Running in standard browser mode.", "warn");
+            log("Standard Browser Environment detected.", "warn");
         }
 
         const last = localStorage.getItem('last_host');
-        if (last) document.getElementById('manual-host').value = last;
+        if (last) {
+            document.getElementById('manual-host').value = last;
+            log(`Recovered last host: ${last}`);
+        }
 
-        window.onerror = (msg, url, line) => log(`SCRIPT ERROR: ${msg} line:${line}`, "error");
+        window.onerror = (msg, url, line) => log(`CRITICAL SCRIPT ERROR: ${msg} [Line ${line}]`, "error");
     </script>
 </body>
 </html>
