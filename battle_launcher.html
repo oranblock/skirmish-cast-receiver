@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚡ SKIRMISH OS — Tactical Battle Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --panel-bg: rgba(14, 18, 28, 0.75);
+      --cyan: #00f0ff;
+      --green: #00ff88;
+      --amber: #ffaa00;
+      --red: #ff3366;
+      --magenta: #e5007d;
+      --text-main: #f0f4f8;
+      --text-dim: #7a8c9e;
+      --border-cyan: rgba(0, 240, 255, 0.3);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.12) 0%, transparent 60%),
+        radial-gradient(circle at 10% 90%, rgba(229, 0, 125, 0.08) 0%, transparent 50%);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    .header-bar {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .logo-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .subtitle {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--cyan);
+      font-size: 13px;
+      letter-spacing: 1px;
+      margin-top: 6px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 540px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-cyan);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .input-field {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: var(--cyan);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .input-field:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+    }
+
+    .btn-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00f0ff 0%, #00ff88 100%);
+      color: #000;
+      box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 24px rgba(0, 255, 136, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(0, 240, 255, 0.2);
+    }
+
+    .btn-accent {
+      background: rgba(229, 0, 125, 0.15);
+      border: 1px solid var(--magenta);
+      color: #ff66c4;
+    }
+
+    .qr-section {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #qrcode {
+      display: inline-block;
+      padding: 12px;
+      background: #fff;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: 'Share Tech Mono', monospace;
+      font-weight: bold;
+    }
+
+    .badge-live { background: rgba(0, 255, 136, 0.2); color: var(--green); border: 1px solid var(--green); }
+
+    .status-log {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      background: #000;
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid var(--cyan);
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <div class="logo-title">
+      ⚔️ SKIRMISH OS
+    </div>
+    <div class="subtitle">AUXILIARY DEEP LINK & BATTLE DISPATCHER</div>
+  </div>
+
+  <div class="container">
+    
+    <div class="card-title">
+      <span>🎯 RIVAL MATCH DISPATCHER</span>
+      <span class="badge badge-live">READY</span>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">MATCH / FIGHT ID (UUID):</label>
+      <input type="text" id="fightId" class="input-field" value="2bafed8f-dbf0-4075-bcfc-7546f2cdfdb6">
+    </div>
+
+    <div class="btn-grid">
+      <!-- 1-TAP DEEP LINK DISPATCH TO APP -->
+      <button class="btn btn-primary" onclick="launchAppDeepLink()">
+        🚀 LAUNCH BATTLE IN SKIRMISH APP
+      </button>
+
+      <!-- HTTPS WEB FALLBACK DISPATCH -->
+      <button class="btn btn-secondary" onclick="launchWebFallback()">
+        🌐 OPEN VIA CLOUD EDGE LINK
+      </button>
+
+      <!-- AUTH DISPATCH TEST -->
+      <button class="btn btn-accent" onclick="launchAuthLink()">
+        🔑 TEST COMMANDER AUTH DEEP LINK
+      </button>
+    </div>
+
+    <!-- QR CODE GENERATOR FOR PHYSICAL CAMERA SCANNING -->
+    <div class="qr-section">
+      <div class="input-label">SCAN WITH PHONE CAMERA TO OPEN BATTLE:</div>
+      <div id="qrcode"></div>
+    </div>
+
+    <!-- DIAGNOSTIC LOG -->
+    <div class="status-log" id="statusLog">
+      [STATUS]: Dispatcher initialized. Ready to launch deep link uri.
+    </div>
+
+  </div>
+
+  <script>
+    const fightInput = document.getElementById('fightId');
+    const statusLog = document.getElementById('statusLog');
+    let qr = null;
+
+    function updateQR() {
+      const id = fightInput.value.trim() || '2bafed8f-dbf0-4075-bcfc-7546f2cdfdb6';
+      const uri = `skirmish://fight?id=${id}`;
+      
+      const qrContainer = document.getElementById("qrcode");
+      qrContainer.innerHTML = "";
+      qr = new QRCode(qrContainer, {
+        text: uri,
+        width: 140,
+        height: 140,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+      });
+
+      statusLog.innerText = `[URI UPDATED]: ${uri}`;
+    }
+
+    function launchAppDeepLink() {
+      const id = fightInput.value.trim() || '2bafed8f-dbf0-4075-bcfc-7546f2cdfdb6';
+      const uri = `skirmish://fight?id=${id}`;
+      statusLog.innerText = `[DISPATCHING INTENT]: ${uri}`;
+      window.location.href = uri;
+    }
+
+    function launchWebFallback() {
+      const id = fightInput.value.trim() || '2bafed8f-dbf0-4075-bcfc-7546f2cdfdb6';
+      const url = `https://vtiuqvlweusuujtbltif.supabase.co/functions/v1/fight?id=${id}`;
+      statusLog.innerText = `[OPENING WEB FALLBACK]: ${url}`;
+      window.open(url, '_blank');
+    }
+
+    function launchAuthLink() {
+      const uri = `skirmish://auth`;
+      statusLog.innerText = `[DISPATCHING AUTH DEEP LINK]: ${uri}`;
+      window.location.href = uri;
+    }
+
+    fightInput.addEventListener('input', updateQR);
+    window.onload = updateQR;
+  </script>
+</body>
+</html>
